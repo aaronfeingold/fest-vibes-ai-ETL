@@ -1,22 +1,26 @@
+from bs4 import BeautifulSoup
+from urllib.request import Request, urlopen
 import re
-from urllib.request import urlopen
+import ipdb
 
 def scrapeWWOZ():
   url = "https://www.wwoz.org/calendar/livewire-music"
 
-  page = urlopen(url)
+  html_page = urlopen(Request(url))
 
-  html = page.read().decode("utf-8")
+  soup = BeautifulSoup(html_page, features="html.parser")
 
-  matches = re.findall(r'<a[^>]* href="([^"]*)"', html)
-
-  substring = 'events'
-  base_url = "https://www.wwoz.org"
   links = []
-  for match in matches:
-    if substring in match:
-      link = base_url + match
-      links.append(link)
+
+  for link in soup.find_all('a'):
+    alike = "/events/"
+    event_href = str(link.get('href'))
+    artist_name  = str(link.renderContents()).replace("b'\\n", "").replace("'", "").strip()
+    artist_event = {}
+
+    if alike in event_href:
+      artist_event[artist_name] = event_href
+      links.append(artist_event)
 
   return links
 
