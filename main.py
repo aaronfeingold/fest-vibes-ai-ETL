@@ -1,9 +1,7 @@
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
-import re
-import ipdb
 
-def scrapeWWOZ():
+def scraper(event, context):
   url = "https://www.wwoz.org/calendar/livewire-music"
 
   html_page = urlopen(Request(url))
@@ -23,13 +21,6 @@ def scrapeWWOZ():
       links.append(artist_event)
 
   return links
-
-
-print(scrapeWWOZ())
-
-
-
-
 
 
 
