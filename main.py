@@ -22,6 +22,3 @@ def scraper(event, context):
 
   return links
 
-
-
-
