@@ -1,7 +1,7 @@
-# oz-re-wire
+# ajf-live-re-wire
 
 ## Overview
-`oz-re-wire` is a Python project designed to reorganize the WWOZ Livewire. It uses web scraping to gather and process data from the WWOZ Livewire website.
+`ajf-live-re-wire` is a Python project designed to reorganize the WWOZ Livewire. It uses web scraping to gather and process data from the WWOZ Livewire website.
 
 ## Prerequisites
 - Python 3.11
@@ -54,8 +54,8 @@ pipenv install
 ```
 ### Step 6: Clone the Repository
 ```sh
-git clone https://github.com/yourusername/oz-re-wire.git
-cd oz-re-wire
+git clone https://github.com/yourusername/ajf-live-re-wire.git
+cd ajf-live-re-wire
 ```
 ## Usage
 
