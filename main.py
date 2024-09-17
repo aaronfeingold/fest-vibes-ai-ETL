@@ -1,12 +1,18 @@
 import os
+import logging
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 from datetime import datetime
 
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-def scrape(event, context):
+
+def scrape():
     # Read base URL and date format from environment variables
     base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
+    logger.info(f"Base URL: {base_url}")
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
 
     # Format the current date using the specified format
@@ -25,7 +31,7 @@ def scrape(event, context):
     if livewire_listing:
         panels = livewire_listing.find_all("div", class_="panel panel-default")
     else:
-        print("Error: No livewire-listing found on the page.")
+        logger.error("Error: No livewire-listing found on the page.")
         return []
 
     for panel in panels:
@@ -37,6 +43,5 @@ def scrape(event, context):
     return links
 
 
-if "__main__" == __name__:
-    data = scrape(None, None)
-    print(data)
+def lambda_handler(event, context):
+    return scrape()
