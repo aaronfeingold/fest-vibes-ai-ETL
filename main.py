@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 def scrape():
     # Read base URL and date format from environment variables
     base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
-    logger.info(f"Base URL: {base_url}")
+
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
 
     # Format the current date using the specified format
