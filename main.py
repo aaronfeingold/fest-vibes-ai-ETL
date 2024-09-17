@@ -1,10 +1,20 @@
+import os
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 from datetime import datetime
 
 
-def scrape_wwoz(event, context):
-    url = f"https://www.wwoz.org/calendar/livewire-music?date={datetime.now().date().strftime('%Y-%m-%d')}"
+def scrape(event, context):
+    # Read base URL and date format from environment variables
+    base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
+    date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
+
+    # Format the current date using the specified format
+    date_str = datetime.now().date().strftime(date_format)
+
+    # Build the full URL
+    url = f"{base_url}?date={date_str}"
+
     html_page = urlopen(Request(url))
     soup = BeautifulSoup(html_page, "html.parser")
 
@@ -25,3 +35,8 @@ def scrape_wwoz(event, context):
             links.append({artist_link.text.strip(): artist_link["href"]})
 
     return links
+
+
+if "__main__" == __name__:
+    data = scrape(None, None)
+    print(data)
