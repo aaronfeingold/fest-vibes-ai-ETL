@@ -71,13 +71,12 @@ python main.py
 
 
 # Deployment
-- Pipeline TBD
-## Manual
+- TBD: Github Pipeline Under Construction
+
+## Beta User Manual
+
 ```
 cd CICD
-bash scripts/create_zip_for_lambda.sh
-bash upload_to_lambda.sh
+chmod +x scripts/build_and_update_lambda
+./scripts/build_and_deploy
 ```
-- Run `create_zip_for_lambda.sh`
-- Run `upload_to_lambda.sh`
-- Redeploy lambda
