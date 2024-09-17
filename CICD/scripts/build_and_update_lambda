@@ -1,0 +1,21 @@
+#!/bin/bash
+
+set -e
+
+pipenv install --deploy --ignore-pipfile
+
+SITE_PACKAGES=$(pipenv --venv)/lib/python$($(pipenv --py) --version | sed 's/.*\(3\.[0-9]*\).*/\1/')/site-packages
+echo "Library location: $SITE_PACKAGES"
+
+DIR=$(pwd)
+
+cd $SITE_PACKAGES
+zip -r9 $DIR/lambda_function_payload.zip * -x "pip/*" "pip-*/*" "__pycache__/*"
+
+cd $DIR
+# Create Zip For Lambda
+zip -r9 lambda_function_payload.zip .
+
+echo "Package created at $DIR/lambda_function_payload.zip"
+
+aws lambda update-function-code --function-name oz-re-wire --zip-file fileb://lambda_function_payload.zip
