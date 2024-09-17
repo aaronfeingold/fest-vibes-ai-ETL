@@ -73,6 +73,11 @@ python main.py
 # Deployment
 - Pipeline TBD
 ## Manual
+```
+cd CICD
+bash scripts/create_zip_for_lambda.sh
+bash upload_to_lambda.sh
+```
 - Run `create_zip_for_lambda.sh`
 - Run `upload_to_lambda.sh`
 - Redeploy lambda
