@@ -50,7 +50,7 @@ pip install pipenv
 
 ### Step 5: Clone the Repository
 ```sh
-git clone https://github.com/yourusername/ajf-live-re-wire.git
+git clone https://github.com/aaronfeingold/ajf-live-re-wire.git
 cd ajf-live-re-wire
 ```
 ### Step 6: Install Dependencies
@@ -67,6 +67,12 @@ pipenv shell
 ### Step 2: Run the Application
 ```sh
 python main.py
+```
+
+## Testing
+**Ensure the PYTHONPATH is set**
+```sh
+PYTHONPATH=. pytest tests/test_main.py
 ```
 
 
