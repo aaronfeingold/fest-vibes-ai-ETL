@@ -3,7 +3,7 @@ import logging
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 from urllib.error import URLError
-from datetime import datetime
+from datetime import datetime, date
 
 
 # Configure logging
