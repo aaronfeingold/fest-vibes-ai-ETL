@@ -1,6 +1,6 @@
 import pytest
 import requests_mock
-from main import lambda_handler  # Replace with the actual import path
+from main import lambda_handler
 
 # Example HTML content for testing
 sample_html = """
