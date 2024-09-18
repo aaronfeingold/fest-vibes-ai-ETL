@@ -11,7 +11,7 @@
 ## Installation
 
 ### Step 1: Install `pyenv`
-`pyenv` is a simple, powerful tool for managing multiple versions of Python. Follow the instructions below to install `pyenv` on your system.
+`pyenv` is a simple, powerful tool for managing multiple versions of Python. Follow the instructions below to install `pyenv` on your system. If interested in learning more, check [this project](https://github.com/aaronfeingold/ajf-fedora-workstation-ansible)
 
 #### On Linux:
 ```sh
