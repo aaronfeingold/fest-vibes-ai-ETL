@@ -40,14 +40,14 @@ def parse_html(html: str) -> list:
     return links
 
 
-def scrape(base_url: str = None, current_date: date = None) -> list:
+def scrape(base_url: str = None, date: date = None) -> list:
     base_url = base_url or os.getenv(
         "BASE_URL", "https://www.wwoz.org/calendar/livewire-music"
     )
-    current_date = current_date or datetime.now().date()
+    date = date or datetime.now().date()
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
 
-    date_str = current_date.strftime(date_format)
+    date_str = date.strftime(date_format)
     url = get_url(base_url, date_str)
 
     try:
