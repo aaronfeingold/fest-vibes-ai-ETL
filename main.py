@@ -37,8 +37,8 @@ def scrape():
     for panel in panels:
         for row in panel.find_all("div", class_="row"):
             artist_link = row.find("div", class_="calendar-info").find("a")
-
-            links.append({artist_link.text.strip(): artist_link["href"]})
+            if artist_link:
+                links.append({artist_link.text.strip(): artist_link["href"]})
 
     return links
 
