@@ -2,45 +2,60 @@ import os
 import logging
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
+from urllib.error import URLError
 from datetime import datetime
+
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def scrape():
-    # Read base URL and date format from environment variables
-    base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
+def get_url(base_url: str, date_str: str) -> str:
+    return f"{base_url}?date={date_str}"
 
-    date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
 
-    # Format the current date using the specified format
-    date_str = datetime.now().date().strftime(date_format)
+def fetch_html(url: str) -> str:
+    try:
+        with urlopen(Request(url)) as response:
+            return response.read().decode("utf-8")
+    except URLError as e:
+        logger.error(f"Failed to fetch URL: {url}. Error: {e}")
+        raise
 
-    # Build the full URL
-    url = f"{base_url}?date={date_str}"
 
-    html_page = urlopen(Request(url))
-    soup = BeautifulSoup(html_page, "html.parser")
-
+def parse_html(html: str) -> list:
+    soup = BeautifulSoup(html, "html.parser")
     links = []
-    # Find the 'livewire-listing' class specifically
     livewire_listing = soup.find("div", class_="livewire-listing")
-    # Find only the 'panel panel-default' divs within the 'livewire-listing' div
-    if livewire_listing:
-        panels = livewire_listing.find_all("div", class_="panel panel-default")
-    else:
-        logger.error("Error: No livewire-listing found on the page.")
-        return []
+    if not livewire_listing:
+        logger.warning("No livewire-listing found on the page.")
+        return links
 
-    for panel in panels:
+    for panel in livewire_listing.find_all("div", class_="panel panel-default"):
         for row in panel.find_all("div", class_="row"):
             artist_link = row.find("div", class_="calendar-info").find("a")
             if artist_link:
                 links.append({artist_link.text.strip(): artist_link["href"]})
-
     return links
+
+
+def scrape(base_url: str = None, current_date: date = None) -> list:
+    base_url = base_url or os.getenv(
+        "BASE_URL", "https://www.wwoz.org/calendar/livewire-music"
+    )
+    current_date = current_date or datetime.now().date()
+    date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
+
+    date_str = current_date.strftime(date_format)
+    url = get_url(base_url, date_str)
+
+    try:
+        html = fetch_html(url)
+        return parse_html(html)
+    except Exception as e:
+        logger.error(f"Error occurred during scraping: {e}")
+        return []
 
 
 def lambda_handler(event, context):
