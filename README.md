@@ -4,16 +4,18 @@
 `ajf-live-re-wire` is a Python project designed to reorganize the WWOZ Livewire. It uses web scraping to gather and process data from the WWOZ Livewire website.
 
 ## Prerequisites
-- Python 3.11
-- `pyenv`
+- Python 3.11.10
+  - recommended: use `pyenv`
 - `pipenv`
+
 
 ## Installation
 
-### Step 1: Install `pyenv`
-`pyenv` is a simple, powerful tool for managing multiple versions of Python. Follow the instructions below to install `pyenv` on your system. If interested in learning more, check [this project](https://github.com/aaronfeingold/ajf-fedora-workstation-ansible)
+### Recommended: `pyenv`
+- `pyenv` is a simple, powerful tool for managing multiple versions of Python. Follow the instructions below to install `pyenv` on your system.
+- If interested in learning more, check out [this project](https://github.com/aaronfeingold/ajf-fedora-workstation-ansible?tab=readme-ov-file#fedora-workstation-ansible)
 
-#### On Linux:
+#### Linux:
 ```sh
 # Install dependencies
 sudo apt-get update
@@ -34,15 +36,14 @@ echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-
-### Step 3: Install Python 3.11 using `pyenv`
+#### Install Python 3.11.10 using `pyenv`
 ```sh
-pyenv install 3.11.0
-pyenv global 3.11.0
+pyenv install 3.11.10
+pyenv global 3.11.10
 ```
 
-### Step 4: Install pipenv
-`pipenv` is a tool that aims to bring the best of all packaging worlds (bundled, development, and deployment) to the Python world. It automatically creates and manages a virtual environment for your projects, as well as adds/removes packages from your Pipfile as you install/uninstall packages.
+### Install `pipenv`
+- `pipenv` is a tool that aims to bring the best of all packaging worlds (bundled, development, and deployment) to the Python world. It automatically creates and manages a virtual environment for your projects, as well as adds/removes packages from your Pipfile as you install/uninstall packages.
 
 ```sh
 pip install pipenv

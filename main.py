@@ -46,9 +46,9 @@ def scrape(base_url: str = None, date: date = None) -> list:
     )
     date = date or datetime.now().date()
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
-
     date_str = date.strftime(date_format)
     url = get_url(base_url, date_str)
+    print(url)
 
     try:
         html = fetch_html(url)
@@ -59,4 +59,5 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 
 def lambda_handler(event, context):
+    # TODO implement error handling
     return scrape()
