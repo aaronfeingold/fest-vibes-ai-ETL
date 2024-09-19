@@ -28,7 +28,15 @@ SAMPLE_HTML = """
 
 @pytest.fixture
 def mock_urlopen():
-    with patch("main.urlopen") as mock_urlopen:
+    mock_response = Mock()
+    mock_response.read.return_value = SAMPLE_HTML.encode("utf-8")
+
+    mock_urlopen = Mock()
+    mock_urlopen.return_value = mock_response
+    mock_urlopen.__enter__.return_value = mock_response
+    mock_urlopen.__exit__.return_value = False
+
+    with patch("main.urlopen", mock_urlopen):
         yield mock_urlopen
 
 
@@ -40,6 +48,20 @@ def mock_date():
         mock_date.date.return_value = mock_date
         mock_date.strftime.return_value = "2024-09-17"
         yield mock_date
+
+
+@pytest.fixture
+def mock_fetch_html():
+    with patch("main.fetch_html") as mock:
+        mock.return_value = SAMPLE_HTML
+        yield mock
+
+
+@pytest.fixture
+def mock_parse_html():
+    with patch("main.parse_html") as mock:
+        mock.return_value = [{"Artist 1": "/events/1234"}, {"Artist 2": "/events/5678"}]
+        yield mock
 
 
 def test_scrape_success(mock_urlopen):
