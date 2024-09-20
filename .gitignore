@@ -3,3 +3,5 @@
 .cache
 test.py
 package/
+*.zip
+.pytest_cache/
