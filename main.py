@@ -48,8 +48,6 @@ def scrape(base_url: str = None, date: date = None) -> list:
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
     date_str = date.strftime(date_format)
     url = get_url(base_url, date_str)
-    print(url)
-    print(date)
 
     try:
         html = fetch_html(url)
