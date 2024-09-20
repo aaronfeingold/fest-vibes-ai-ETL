@@ -85,7 +85,6 @@ PYTHONPATH=. pytest tests/test_main.py
 ## Beta User Manual
 
 ```
-cd CICD
-chmod +x scripts/build_and_update_lambda
-./scripts/build_and_deploy
+chmod +x CICD/scripts/build_and_update_lambda
+./CICD/scripts/build_and_update_lambda
 ```
