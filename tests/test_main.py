@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 from datetime import datetime
 from main import lambda_handler, scrape
 
@@ -28,16 +28,11 @@ SAMPLE_HTML = """
 
 @pytest.fixture
 def mock_urlopen():
-    mock_response = Mock()
-    mock_response.read.return_value = SAMPLE_HTML.encode("utf-8")
-
-    mock_urlopen = Mock()
-    mock_urlopen.return_value = mock_response
-    mock_urlopen.__enter__.return_value = mock_response
-    mock_urlopen.__exit__.return_value = False
-
-    with patch("main.urlopen", mock_urlopen):
-        yield mock_urlopen
+    with patch("main.urlopen") as mock:
+        mock_cm = MagicMock()
+        mock_cm.read.return_value = SAMPLE_HTML.encode("utf-8")
+        mock.return_value.__enter__.return_value = mock_cm
+        yield mock
 
 
 @pytest.fixture
@@ -75,7 +70,9 @@ def test_scrape_success(mock_urlopen):
 
 def test_scrape_no_livewire_listing(mock_urlopen):
     no_listing_html = "<html><body><div>No Data</div></body></html>"
-    mock_urlopen.return_value.read.return_value = no_listing_html.encode("utf-8")
+    mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+        no_listing_html.encode("utf-8")
+    )
 
     result = lambda_handler(None, None)
 
@@ -83,7 +80,7 @@ def test_scrape_no_livewire_listing(mock_urlopen):
 
 
 def test_scrape_empty_response(mock_urlopen):
-    mock_urlopen.return_value.read.return_value = b""
+    mock_urlopen.return_value.__enter__.return_value.read.return_value = b""
 
     result = lambda_handler(None, None)
 
