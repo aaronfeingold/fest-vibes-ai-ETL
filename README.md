@@ -49,23 +49,25 @@ pyenv global 3.11.10
 pip install pipenv
 ```
 
-### Step 5: Clone the Repository
+### Clone the Repository
 ```sh
 git clone https://github.com/aaronfeingold/ajf-live-re-wire.git
 cd ajf-live-re-wire
 ```
-### Step 6: Install Dependencies
-```sh
-pipenv install
-```
+
 ## Usage
 
-### Step 1: Activate the Pipenv Shell
+### Activate the Pipenv Shell
 ```sh
 pipenv shell
 ```
 
-### Step 2: Run the Application
+### Install Dependencies
+```sh
+pipenv install
+```
+
+### Run
 ```sh
 python main.py
 ```
