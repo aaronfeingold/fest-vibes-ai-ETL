@@ -39,4 +39,4 @@ rm -rf $TEMP_DIR
 echo "Package created at $PROJECT_ROOT/CICD/lambda_function_payload.zip"
 
 # Uncomment the following line to upload to AWS Lambda
-# aws lambda update-function-code --function-name oz-re-wire --zip-file fileb://CICD/lambda_function_payload.zip
+aws lambda update-function-code --function-name oz-re-wire --zip-file fileb://CICD/lambda_function_payload.zip
