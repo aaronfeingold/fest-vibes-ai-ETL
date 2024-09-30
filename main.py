@@ -126,8 +126,24 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 def lambda_handler(event, context):
     try:
-        events = scrape()
+        base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
+        events = scrape(base_url)
         return create_response(200, {"status": "success", "data": events})
     except ScrapingError as e:
-        logger.error(f"Scraping error: {str(e)}")
-        return create_response(500, {"status": "error", "message": str(e)})
+        logger.error(f"Scraping error: {e.error_type} - {e.message}")
+        return create_response(
+            e.status_code,
+            {"status": "error", "error": {"type": e.error_type, "message": e.message}},
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return create_response(
+            500,
+            {
+                "status": "error",
+                "error": {
+                    "type": "UNKNOWN_ERROR",
+                    "message": "An unexpected error occurred",
+                },
+            },
+        )
