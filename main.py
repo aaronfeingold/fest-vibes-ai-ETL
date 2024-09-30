@@ -3,9 +3,10 @@ import logging
 import json
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 from datetime import datetime, date
 import pytz
+from typing import Dict, Any
 
 # Configure logging
 logger = logging.getLogger()
@@ -24,6 +25,11 @@ DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 
+
+def ScrapingError(Exception):
+    pass
+
+
 def get_url(base_url: str, date_str: str) -> str:
     return f"{base_url}?date={date_str}"
 
@@ -36,6 +42,9 @@ def fetch_html(url: str) -> str:
     except URLError as e:
         logger.error(f"Failed to fetch URL: {url}. Error: {e}")
         raise
+    except HTTPError as e:
+        logger.error(f"HTTP Error: {e.code} - {e.reason} for URL: {url}")
+        raise ScrapingError(f"Failed to fetch data: HTTP {e.code}")
 
 
 def parse_html(html: str) -> list:
@@ -54,13 +63,22 @@ def parse_html(html: str) -> list:
     return links
 
 
+def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",  # Configure as needed for your frontend
+        },
+        "body": json.dumps(body),
+    }
+
+
 def scrape(base_url: str = None, date: date = None) -> list:
     base_url = base_url or os.getenv(
         "BASE_URL", "https://www.wwoz.org/calendar/livewire-music"
     )
-    if date is None:
-        # Get the current date in New Orleans timezone
-        date = datetime.now(NEW_ORLEANS_TZ).date()
+    date = date or datetime.now(NEW_ORLEANS_TZ).date()
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
     date_str = date.strftime(date_format)
     url = get_url(base_url, date_str)
@@ -74,5 +92,5 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 
 def lambda_handler(event, context):
-    # TODO implement error handling
-    return scrape()
+    events = scrape()
+    return create_response(200, {"status": "success", "data": events})
