@@ -27,7 +27,15 @@ DEFAULT_HEADERS = {
 
 
 def ScrapingError(Exception):
-    pass
+    """Custom exception for scraping errors"""
+
+    def __init__(
+        self, message: str, error_type: str = "GENERAL_ERROR", status_code: int = 500
+    ):
+        self.message = message
+        self.error_type = error_type
+        self.status_code = status_code
+        super().__init__(self.message)
 
 
 def get_url(base_url: str, date_str: str) -> str:
@@ -39,12 +47,24 @@ def fetch_html(url: str) -> str:
         req = Request(url, headers=DEFAULT_HEADERS)
         with urlopen(req) as response:
             return response.read().decode("utf-8")
-    except URLError as e:
-        logger.error(f"Failed to fetch URL: {url}. Error: {e}")
-        raise
     except HTTPError as e:
-        logger.error(f"HTTP Error: {e.code} - {e.reason} for URL: {url}")
-        raise ScrapingError(f"Failed to fetch data: HTTP {e.code}")
+        raise ScrapingError(
+            message=f"Failed to fetch data: HTTP {e.code}",
+            error_type="HTTP_ERROR",
+            status_code=e.code,
+        )
+    except URLError as e:
+        raise ScrapingError(
+            message=f"Failed to connect to server: {e.reason}",
+            error_type="CONNECTION_ERROR",
+            status_code=503,
+        )
+    except Exception as e:
+        raise ScrapingError(
+            message="An unexpected error occurred while fetching data",
+            error_type="FETCH_ERROR",
+            status_code=500,
+        )
 
 
 def parse_html(html: str) -> list:
@@ -92,5 +112,9 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 
 def lambda_handler(event, context):
-    events = scrape()
-    return create_response(200, {"status": "success", "data": events})
+    try:
+        events = scrape()
+        return create_response(200, {"status": "success", "data": events})
+    except ScrapingError as e:
+        logger.error(f"Scraping error: {str(e)}")
+        return create_response(500, {"status": "error", "message": str(e)})
