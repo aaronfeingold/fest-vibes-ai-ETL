@@ -68,19 +68,32 @@ def fetch_html(url: str) -> str:
 
 
 def parse_html(html: str) -> list:
-    soup = BeautifulSoup(html, "html.parser")
-    links = []
-    livewire_listing = soup.find("div", class_="livewire-listing")
-    if not livewire_listing:
-        logger.warning("No livewire-listing found on the page.")
-        return links
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        links = []
+        livewire_listing = soup.find("div", class_="livewire-listing")
+        if not livewire_listing:
+            logger.warning("No livewire-listing found on the page.")
+            raise ScrapingError(
+                message="No events found for this date",
+                error_type="NO_EVENTS",
+                status_code=404,
+            )
 
-    for panel in livewire_listing.find_all("div", class_="panel panel-default"):
-        for row in panel.find_all("div", class_="row"):
-            artist_link = row.find("div", class_="calendar-info").find("a")
-            if artist_link:
-                links.append({artist_link.text.strip(): artist_link["href"]})
-    return links
+        for panel in livewire_listing.find_all("div", class_="panel panel-default"):
+            for row in panel.find_all("div", class_="row"):
+                artist_link = row.find("div", class_="calendar-info").find("a")
+                if artist_link:
+                    links.append({artist_link.text.strip(): artist_link["href"]})
+        return links
+    except ScrapingError:
+        raise
+    except Exception as e:
+        raise ScrapingError(
+            message="Failed to parse webpage content",
+            error_type="PARSE_ERROR",
+            status_code=500,
+        )
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
