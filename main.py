@@ -14,6 +14,16 @@ logger.setLevel(logging.INFO)
 # Define the timezone for New Orleans (CST/CDT)
 NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
 
+# Default headers for HTTP requests to prevent Bot detection
+DEFAULT_HEADERS = {
+    "User-Agent": os.getenv(
+        "USER_AGENT",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+
 def get_url(base_url: str, date_str: str) -> str:
     return f"{base_url}?date={date_str}"
 
