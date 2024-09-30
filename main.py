@@ -30,7 +30,8 @@ def get_url(base_url: str, date_str: str) -> str:
 
 def fetch_html(url: str) -> str:
     try:
-        with urlopen(Request(url)) as response:
+        req = Request(url, headers=DEFAULT_HEADERS)
+        with urlopen(req) as response:
             return response.read().decode("utf-8")
     except URLError as e:
         logger.error(f"Failed to fetch URL: {url}. Error: {e}")
