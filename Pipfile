@@ -8,6 +8,7 @@ requests = "*"
 urlopen = "*"
 beautifulsoup4 = "*"
 ipdb = "*"
+pytz = "*"
 
 [dev-packages]
 pytest = "*"

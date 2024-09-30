@@ -4,12 +4,14 @@ from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from datetime import datetime, date
-
+import pytz
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Define the timezone for New Orleans (CST/CDT)
+NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
 
 def get_url(base_url: str, date_str: str) -> str:
     return f"{base_url}?date={date_str}"
@@ -44,7 +46,9 @@ def scrape(base_url: str = None, date: date = None) -> list:
     base_url = base_url or os.getenv(
         "BASE_URL", "https://www.wwoz.org/calendar/livewire-music"
     )
-    date = date or datetime.now().date()
+    if date is None:
+        # Get the current date in New Orleans timezone
+        date = datetime.now(NEW_ORLEANS_TZ).date()
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
     date_str = date.strftime(date_format)
     url = get_url(base_url, date_str)
