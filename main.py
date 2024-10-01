@@ -28,11 +28,24 @@ DEFAULT_HEADERS = {
 }
 
 
+class ErrorType(Enum):
+    GENERAL_ERROR = "GENERAL_ERROR"
+    HTTP_ERROR = "HTTP_ERROR"
+    CONNECTION_ERROR = "CONNECTION_ERROR"
+    FETCH_ERROR = "FETCH_ERROR"
+    NO_EVENTS = "NO_EVENTS"
+    PARSE_ERROR = "PARSE_ERROR"
+    UNKNOWN_ERROR = "UNKNOWN_ERROR"
+
+
 class ScrapingError(Exception):
     """Custom exception for scraping errors"""
 
     def __init__(
-        self, message: str, error_type: str = "GENERAL_ERROR", status_code: int = 500
+        self,
+        message: str,
+        error_type: ErrorType = ErrorType.GENERAL_ERROR,
+        status_code: int = 500,
     ):
         self.message = message
         self.error_type = error_type
@@ -52,19 +65,19 @@ def fetch_html(url: str) -> str:
     except HTTPError as e:
         raise ScrapingError(
             message=f"Failed to fetch data: HTTP {e.code}",
-            error_type="HTTP_ERROR",
+            error_type=ErrorType.HTTP_ERROR,
             status_code=e.code,
         )
     except URLError as e:
         raise ScrapingError(
             message=f"Failed to connect to server: {e.reason}",
-            error_type="CONNECTION_ERROR",
+            error_type=ErrorType.CONNECTION_ERROR,
             status_code=503,
         )
     except Exception as e:
         raise ScrapingError(
             message=f"An unexpected error occurred while fetching data: {e}",
-            error_type="FETCH_ERROR",
+            error_type=ErrorType.FETCH_ERROR,
             status_code=500,
         )
 
@@ -78,7 +91,7 @@ def parse_html(html: str) -> List[Dict[str, str]]:
             logger.warning("No livewire-listing found on the page.")
             raise ScrapingError(
                 message="No events found for this date",
-                error_type="NO_EVENTS",
+                error_type=ErrorType.NO_EVENTS,
                 status_code=404,
             )
 
@@ -93,7 +106,7 @@ def parse_html(html: str) -> List[Dict[str, str]]:
     except Exception as e:
         raise ScrapingError(
             message=f"Failed to parse webpage content: {e}",
-            error_type="PARSE_ERROR",
+            error_type=ErrorType.PARSE_ERROR,
             status_code=500,
         )
 
@@ -144,7 +157,7 @@ def lambda_handler(event, context):
             {
                 "status": "error",
                 "error": {
-                    "type": "UNKNOWN_ERROR",
+                    "type": ErrorType.UNKNOWN_ERROR.value,
                     "message": f"An unexpected error occurred: {e}",
                 },
             },
