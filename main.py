@@ -13,6 +13,7 @@ from enum import Enum
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+SAMPLE_WEBSITE = "https://www.wwoz.org"
 # Define the timezone for New Orleans (CST/CDT)
 NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
 
@@ -31,7 +32,7 @@ DEFAULT_HEADERS = {
 class ErrorType(Enum):
     GENERAL_ERROR = "GENERAL_ERROR"
     HTTP_ERROR = "HTTP_ERROR"
-    CONNECTION_ERROR = "CONNECTION_ERROR"
+    URL_ERROR = "URL_ERROR"
     FETCH_ERROR = "FETCH_ERROR"
     NO_EVENTS = "NO_EVENTS"
     PARSE_ERROR = "PARSE_ERROR"
@@ -71,7 +72,7 @@ def fetch_html(url: str) -> str:
     except URLError as e:
         raise ScrapingError(
             message=f"Failed to connect to server: {e.reason}",
-            error_type=ErrorType.CONNECTION_ERROR,
+            error_type=ErrorType.URL_ERROR,
             status_code=503,
         )
     except Exception as e:
@@ -99,7 +100,11 @@ def parse_html(html: str) -> List[Dict[str, str]]:
             for row in panel.find_all("div", class_="row"):
                 artist_link = row.find("div", class_="calendar-info").find("a")
                 if artist_link:
-                    links.append({artist_link.text.strip(): artist_link["href"]})
+                    href = artist_link["href"]
+                    full_href = (
+                        href if SAMPLE_WEBSITE in href else f"{SAMPLE_WEBSITE}{href}"
+                    )
+                    links.append({artist_link.text.strip(): full_href})
         return links
     except ScrapingError:
         raise
@@ -126,7 +131,7 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
 
 def scrape(base_url: str = None, date: date = None) -> list:
     base_url = base_url or os.getenv(
-        "BASE_URL", "https://www.wwoz.org/calendar/livewire-music"
+        "BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music"
     )
     date = date or datetime.now(NEW_ORLEANS_TZ).date()
     date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
@@ -145,7 +150,7 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 def lambda_handler(event, context):
     try:
-        base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
+        base_url = os.getenv("BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music")
         events = scrape(base_url)
         return create_response(200, {"status": "success", "data": events})
     except ScrapingError as e:
