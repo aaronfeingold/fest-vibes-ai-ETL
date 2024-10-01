@@ -112,22 +112,15 @@ def parse_html(html: str) -> List[Dict[str, str]]:
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
-
-    def serialize_body(obj):
-        if isinstance(obj, dict):
-            return {k: serialize_body(v) for k, v in obj.items()}
-        if isinstance(obj, Enum):
-            return obj.value  # Use .value instead of .name to match your ErrorType Enum
-        return obj
-
-    serialized_body = serialize_body(body)
+    if isinstance(body.get("error", {}).get("type"), ErrorType):
+        body["error"]["type"] = body["error"]["type"].value
 
     return {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
         },
-        "body": json.dumps(serialized_body),
+        "body": json.dumps(body),
     }
 
 
@@ -143,27 +136,37 @@ def scrape(base_url: str = None, date: date = None) -> list:
     try:
         html = fetch_html(url)
         return parse_html(html)
+    except ScrapingError:
+        raise
     except Exception as e:
         logger.error(f"Error occurred during scraping: {e}")
-        return []
+        raise
 
 
 def lambda_handler(event, context):
     try:
         base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
         events = scrape(base_url)
-        if not events:
-            raise ScrapingError(
-                message="No events found for this date",
-                error_type=ErrorType.NO_EVENTS,
-                status_code=404,
-            )
         return create_response(200, {"status": "success", "data": events})
     except ScrapingError as e:
         logger.error(f"Scraping error: {e.error_type} - {e.message}")
         return create_response(
             e.status_code,
             {"status": "error", "error": {"type": e.error_type, "message": e.message}},
+        )
+    except HTTPError as e:
+        error = ScrapingError(
+            message=f"Failed to fetch data: HTTP {e.code}",
+            error_type=ErrorType.HTTP_ERROR,
+            status_code=e.code,
+        )
+        logger.error(f"HTTP error: {error.message}")
+        return create_response(
+            error.status_code,
+            {
+                "status": "error",
+                "error": {"type": error.error_type, "message": error.message},
+            },
         )
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
@@ -172,7 +175,7 @@ def lambda_handler(event, context):
             {
                 "status": "error",
                 "error": {
-                    "type": ErrorType.UNKNOWN_ERROR.value,
+                    "type": ErrorType.UNKNOWN_ERROR,
                     "message": f"An unexpected error occurred: {e}",
                 },
             },
