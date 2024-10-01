@@ -7,6 +7,7 @@ from urllib.error import URLError, HTTPError
 from datetime import datetime, date
 import pytz
 from typing import Dict, Any, List
+from enum import Enum
 
 # Configure logging
 logger = logging.getLogger()
