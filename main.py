@@ -27,7 +27,7 @@ DEFAULT_HEADERS = {
 }
 
 
-def ScrapingError(Exception):
+class ScrapingError(Exception):
     """Custom exception for scraping errors"""
 
     def __init__(
