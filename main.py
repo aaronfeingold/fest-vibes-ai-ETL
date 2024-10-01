@@ -61,7 +61,7 @@ def fetch_html(url: str) -> str:
         )
     except Exception as e:
         raise ScrapingError(
-            message="An unexpected error occurred while fetching data",
+            message=f"An unexpected error occurred while fetching data: {e}",
             error_type="FETCH_ERROR",
             status_code=500,
         )
@@ -143,7 +143,7 @@ def lambda_handler(event, context):
                 "status": "error",
                 "error": {
                     "type": "UNKNOWN_ERROR",
-                    "message": "An unexpected error occurred",
+                    "message": f"An unexpected error occurred: {e}",
                 },
             },
         )
