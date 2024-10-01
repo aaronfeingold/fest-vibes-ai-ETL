@@ -19,7 +19,8 @@ NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
 DEFAULT_HEADERS = {
     "User-Agent": os.getenv(
         "USER_AGENT",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/91.0.4472.124 Safari/537.36",
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
@@ -90,7 +91,7 @@ def parse_html(html: str) -> list:
         raise
     except Exception as e:
         raise ScrapingError(
-            message="Failed to parse webpage content",
+            message=f"Failed to parse webpage content: {e}",
             error_type="PARSE_ERROR",
             status_code=500,
         )
