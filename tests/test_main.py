@@ -1,7 +1,9 @@
+import json
 import pytest
 from unittest.mock import patch, Mock, MagicMock
+from urllib.error import URLError, HTTPError
 from datetime import datetime
-from main import lambda_handler, scrape
+from main import lambda_handler, scrape, ScrapingError, ErrorType
 
 # Sample HTML content for testing
 SAMPLE_HTML = """
@@ -24,6 +26,8 @@ SAMPLE_HTML = """
     </body>
 </html>
 """
+
+NO_LISTING_HTML = "<html><body><div>No Data</div></body></html>"
 
 
 @pytest.fixture
@@ -59,24 +63,41 @@ def mock_parse_html():
         yield mock
 
 
-def test_scrape_success(mock_urlopen):
-    mock_urlopen.return_value.read.return_value = SAMPLE_HTML.encode("utf-8")
-
+def test_lambda_handler_success(mock_urlopen):
     result = lambda_handler(None, None)
 
-    expected = [{"Artist 1": "/events/1234"}, {"Artist 2": "/events/5678"}]
-    assert result == expected
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["status"] == "success"
+    assert len(body["data"]) == 2
+    assert body["data"][0] == {"Artist 1": "/events/1234"}
+    assert body["data"][1] == {"Artist 2": "/events/5678"}
 
 
-def test_scrape_no_livewire_listing(mock_urlopen):
-    no_listing_html = "<html><body><div>No Data</div></body></html>"
+def test_lambda_handler_no_events(mock_urlopen):
     mock_urlopen.return_value.__enter__.return_value.read.return_value = (
-        no_listing_html.encode("utf-8")
+        NO_LISTING_HTML.encode("utf-8")
     )
 
     result = lambda_handler(None, None)
 
-    assert result == []
+    assert result["statusCode"] == 404
+    body = json.loads(result["body"])
+    assert body["status"] == "error"
+    assert body["error"]["type"] == "NO_EVENTS"
+    assert "No livewire-listing events found for this date" in body["error"]["message"]
+
+
+def test_lambda_handler_http_error(mock_urlopen):
+    mock_urlopen.side_effect = HTTPError("http://test.com", 404, "Not Found", {}, None)
+
+    result = lambda_handler(None, None)
+
+    assert result["statusCode"] == 404
+    body = json.loads(result["body"])
+    assert body["status"] == "error"
+    assert body["error"]["type"] == "HTTP_ERROR"
+    assert "Failed to fetch data: HTTP 404" in body["error"]["message"]
 
 
 def test_scrape_empty_response(mock_urlopen):
