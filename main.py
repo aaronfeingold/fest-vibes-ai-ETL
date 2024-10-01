@@ -116,7 +116,6 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
         },
         "body": json.dumps(body),
     }
