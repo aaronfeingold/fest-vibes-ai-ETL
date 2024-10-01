@@ -105,7 +105,23 @@ def test_scrape_empty_response(mock_urlopen):
 
     result = lambda_handler(None, None)
 
-    assert result == []
+    assert result["statusCode"] == 404
+    body = json.loads(result["body"])
+    assert body["status"] == "error"
+    assert body["error"]["type"] == "NO_EVENTS"
+    assert "No livewire-listing events found" in body["error"]["message"]
+
+
+# If you still need to test the scrape function directly, you could add:
+def test_scrape_function_empty_response(mock_urlopen):
+    mock_urlopen.return_value.__enter__.return_value.read.return_value = b""
+
+    with pytest.raises(ScrapingError) as exc_info:
+        scrape()
+
+    assert exc_info.value.error_type == ErrorType.NO_EVENTS
+    assert exc_info.value.status_code == 404
+    assert "No livewire-listing events found" in str(exc_info.value)
 
 
 def test_url_formation(mock_urlopen, mock_date):
