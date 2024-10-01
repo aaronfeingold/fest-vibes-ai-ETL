@@ -90,7 +90,7 @@ def parse_html(html: str) -> List[Dict[str, str]]:
         if not livewire_listing:
             logger.warning("No livewire-listing found on the page.")
             raise ScrapingError(
-                message="No events found for this date",
+                message="No livewire-listing events found for this date",
                 error_type=ErrorType.NO_EVENTS,
                 status_code=404,
             )
@@ -112,12 +112,22 @@ def parse_html(html: str) -> List[Dict[str, str]]:
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
+
+    def serialize_body(obj):
+        if isinstance(obj, dict):
+            return {k: serialize_body(v) for k, v in obj.items()}
+        if isinstance(obj, Enum):
+            return obj.value  # Use .value instead of .name to match your ErrorType Enum
+        return obj
+
+    serialized_body = serialize_body(body)
+
     return {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
         },
-        "body": json.dumps(body),
+        "body": json.dumps(serialized_body),
     }
 
 
@@ -142,6 +152,12 @@ def lambda_handler(event, context):
     try:
         base_url = os.getenv("BASE_URL", "https://www.wwoz.org/calendar/livewire-music")
         events = scrape(base_url)
+        if not events:
+            raise ScrapingError(
+                message="No events found for this date",
+                error_type=ErrorType.NO_EVENTS,
+                status_code=404,
+            )
         return create_response(200, {"status": "success", "data": events})
     except ScrapingError as e:
         logger.error(f"Scraping error: {e.error_type} - {e.message}")
