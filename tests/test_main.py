@@ -1,12 +1,12 @@
 import json
 import pytest
 from unittest.mock import patch, Mock, MagicMock
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError
 from datetime import datetime
-from main import lambda_handler, scrape, ScrapingError, ErrorType
+from main import lambda_handler, scrape, ScrapingError, ErrorType, SAMPLE_WEBSITE
 
 # Sample HTML content for testing
-SAMPLE_HTML = """
+SAMPLE_HTML = f"""
 <html>
     <body>
         <div class="livewire-listing">
@@ -19,6 +19,11 @@ SAMPLE_HTML = """
                 <div class="row">
                     <div class="calendar-info">
                         <a href="/events/5678">Artist 2</a>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="calendar-info">
+                        <a href="{SAMPLE_WEBSITE}/events/9012">Artist 3</a>
                     </div>
                 </div>
             </div>
@@ -56,22 +61,16 @@ def mock_fetch_html():
         yield mock
 
 
-@pytest.fixture
-def mock_parse_html():
-    with patch("main.parse_html") as mock:
-        mock.return_value = [{"Artist 1": "/events/1234"}, {"Artist 2": "/events/5678"}]
-        yield mock
-
-
 def test_lambda_handler_success(mock_urlopen):
     result = lambda_handler(None, None)
 
     assert result["statusCode"] == 200
     body = json.loads(result["body"])
     assert body["status"] == "success"
-    assert len(body["data"]) == 2
-    assert body["data"][0] == {"Artist 1": "/events/1234"}
-    assert body["data"][1] == {"Artist 2": "/events/5678"}
+    assert len(body["data"]) == 3
+    assert body["data"][0] == {"Artist 1": f"{SAMPLE_WEBSITE}/events/1234"}
+    assert body["data"][1] == {"Artist 2": f"{SAMPLE_WEBSITE}/events/5678"}
+    assert body["data"][2] == {"Artist 3": f"{SAMPLE_WEBSITE}/events/9012"}
 
 
 def test_lambda_handler_no_events(mock_urlopen):
