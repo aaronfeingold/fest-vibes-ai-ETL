@@ -6,7 +6,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from datetime import datetime, date
 import pytz
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # Configure logging
 logger = logging.getLogger()
@@ -68,7 +68,7 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str) -> list:
+def parse_html(html: str) -> List[Dict[str, str]]:
     try:
         soup = BeautifulSoup(html, "html.parser")
         links = []
@@ -102,7 +102,7 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",  # Configure as needed for your frontend
+            "Access-Control-Allow-Origin": "*",
         },
         "body": json.dumps(body),
     }
