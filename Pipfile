@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-requests = "*"
 urlopen = "*"
 beautifulsoup4 = "*"
 ipdb = "*"
@@ -12,7 +11,6 @@ pytz = "*"
 
 [dev-packages]
 pytest = "*"
-requests-mock = "*"
 
 [requires]
 python_version = "3.11"
