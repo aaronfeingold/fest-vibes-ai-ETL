@@ -1,7 +1,7 @@
 # ajf-live-re-wire
 
 ## Overview
-`ajf-live-re-wire` is a Python project designed to reorganize the WWOZ Livewire. It uses web scraping to gather and process data from the WWOZ Livewire website.
+`ajf-live-re-wire` is a Python ETL Pipeline. It was designed initially to reorganize the WWOZ Livewire, a music calendar of events in New Orleans. Its main purpose now is analyze and evaluate trends within local and-eventually-global music trends.
 
 ## Prerequisites
 - Python 3.11.10
