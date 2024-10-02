@@ -5,7 +5,6 @@ from urllib.error import HTTPError
 from datetime import datetime
 from main import lambda_handler, scrape, ScrapingError, ErrorType, SAMPLE_WEBSITE
 
-# Sample HTML content for testing
 SAMPLE_HTML = f"""
 <html>
     <body>
@@ -111,7 +110,6 @@ def test_scrape_empty_response(mock_urlopen):
     assert "No livewire-listing events found" in body["error"]["message"]
 
 
-# If you still need to test the scrape function directly, you could add:
 def test_scrape_function_empty_response(mock_urlopen):
     mock_urlopen.return_value.__enter__.return_value.read.return_value = b""
 
@@ -126,7 +124,6 @@ def test_scrape_function_empty_response(mock_urlopen):
 def test_url_formation(mock_urlopen, mock_date):
     mock_urlopen.return_value.read.return_value = SAMPLE_HTML.encode("utf-8")
 
-    # ensure it returns the default values as specified in the scrape function
     with patch("os.getenv") as mock_getenv:
         mock_getenv.side_effect = lambda key, default: default
         scrape()
@@ -138,5 +135,4 @@ def test_url_formation(mock_urlopen, mock_date):
         actual_url == expected_url
     ), f"Expected URL: {expected_url}, but got: {actual_url}"
 
-    # Verify that the correct date formatting method was called
     mock_date.date.return_value.strftime.assert_called_once_with("%Y-%m-%d")
