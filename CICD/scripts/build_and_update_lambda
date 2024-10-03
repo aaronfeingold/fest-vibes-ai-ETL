@@ -4,7 +4,7 @@ set -e
 
 build_mode=${1:-"development"}
 function_name="ajf-live-re-wire"
-if ["$build_mode" == "development"]; then
+if [ "$build_mode" == "development" ]; then
     function_name="oz-re-wire"
 fi
 # Ensure we're in the project root directory
