@@ -2,6 +2,11 @@
 
 set -e
 
+build_mode=${1:-"development"}
+function_name="ajf-live-re-wire"
+if ["$build_mode" == "development"]; then
+    function_name="oz-re-wire"
+fi
 # Ensure we're in the project root directory
 PROJECT_ROOT=$(pwd)
 
@@ -39,4 +44,4 @@ rm -rf $TEMP_DIR
 echo "Package created at $PROJECT_ROOT/CICD/lambda_function_payload.zip"
 
 # Uncomment the following line to upload to AWS Lambda
-aws lambda update-function-code --function-name oz-re-wire --zip-file fileb://CICD/lambda_function_payload.zip
+aws lambda update-function-code --function-name ${function_name} --zip-file fileb://CICD/lambda_function_payload.zip
