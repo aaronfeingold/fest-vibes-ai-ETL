@@ -64,7 +64,7 @@ def test_lambda_handler_success(mock_urlopen):
     result = lambda_handler(None, None)
 
     assert result["statusCode"] == 200
-    body = json.loads(result["body"])
+    body = result["body"]
     assert body["status"] == "success"
     assert len(body["data"]) == 3
     assert body["data"][0] == {"Artist 1": f"{SAMPLE_WEBSITE}/events/1234"}
