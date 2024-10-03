@@ -1,4 +1,3 @@
-import json
 import pytest
 from unittest.mock import patch, Mock, MagicMock
 from urllib.error import HTTPError
@@ -80,7 +79,7 @@ def test_lambda_handler_no_events(mock_urlopen):
     result = lambda_handler(None, None)
 
     assert result["statusCode"] == 404
-    body = json.loads(result["body"])
+    body = result["body"]
     assert body["status"] == "error"
     assert body["error"]["type"] == "NO_EVENTS"
     assert "No livewire-listing events found for this date" in body["error"]["message"]
@@ -92,7 +91,7 @@ def test_lambda_handler_http_error(mock_urlopen):
     result = lambda_handler(None, None)
 
     assert result["statusCode"] == 404
-    body = json.loads(result["body"])
+    body = result["body"]
     assert body["status"] == "error"
     assert body["error"]["type"] == "HTTP_ERROR"
     assert "Failed to fetch data: HTTP 404" in body["error"]["message"]
@@ -104,7 +103,7 @@ def test_scrape_empty_response(mock_urlopen):
     result = lambda_handler(None, None)
 
     assert result["statusCode"] == 404
-    body = json.loads(result["body"])
+    body = result["body"]
     assert body["status"] == "error"
     assert body["error"]["type"] == "NO_EVENTS"
     assert "No livewire-listing events found" in body["error"]["message"]
