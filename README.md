@@ -90,17 +90,17 @@ docker build -t ajf-live-re-wire .
 ```
 - **login**
 ```
-aws ecr get-login-password --region <your-region> | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.<your-region>.amazonaws.com
+docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire
 ```
 - **tag**
 ```
-docker tag $lambda_name:latest <your-account-id>.dkr.ecr.<your-region>.amazonaws.com/$lambda_name:latest
+docker tag $lambda_name:latest XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
 ```
 - **push to ECR**
 ```
-docker push <your-account-id>.dkr.ecr.<your-region>.amazonaws.com/$lambda_name:latest
+docker push XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
 ```
 - **update lambda**
 ```
-aws lambda update-function-code --function-name $lambda_name --image-uri <your-account-id>.dkr.ecr.<your-region>.amazonaws.com/$lambda_name:latest
+aws lambda update-function-code --function-name $lambda_name --image-uri XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
 ```
