@@ -80,11 +80,27 @@ PYTHONPATH=. pytest tests/test_main.py
 
 
 # Deployment
-- TBD: Github Pipeline Under Construction
+## Under Construction: Github Actions
 
 ## Beta User Manual
 
+- **build docker image**
 ```
-chmod +x CICD/scripts/build_and_update_lambda
-./CICD/scripts/build_and_update_lambda
+docker build -t ajf-live-re-wire .
+```
+- **login**
+```
+docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire
+```
+- **tag**
+```
+docker tag $lambda_name:latest XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
+```
+- **push to ECR**
+```
+docker push XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
+```
+- **update lambda**
+```
+aws lambda update-function-code --function-name $lambda_name --image-uri XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
 ```
