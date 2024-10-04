@@ -7,11 +7,10 @@ WORKDIR /var/task
 # Copy Pipfile and Pipfile.lock
 COPY Pipfile Pipfile.lock ./
 
-# Install pipenv
-RUN pip install pipenv
-
-# Install dependencies using pipenv
-RUN pipenv install --deploy --ignore-pipfile --system
+# Install pipenv and dependencies in the global system, then remove pipenv
+RUN pip install pipenv && \
+    pipenv install --deploy --ignore-pipfile --system && \
+    pip uninstall -y pipenv
 
 # Copy the rest of the application code
 COPY . .
