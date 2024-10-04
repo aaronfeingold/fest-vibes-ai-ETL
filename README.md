@@ -84,7 +84,7 @@ PYTHONPATH=. pytest tests/test_main.py
 
 ## Beta User Manual
 
+- **build docker image**
 ```
-chmod +x CICD/scripts/build_and_update_lambda
-./CICD/scripts/build_and_update_lambda
+docker build -t ajf-live-re-wire .
 ```
