@@ -1,4 +1,12 @@
 
+name: Deploy Lambda Function
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
 env:
   AWS_REGION: us-east-1
 
@@ -23,10 +31,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "BUILD_MODE=production" >> $GITHUB_ENV
             echo "LAMBDA_NAME=ajf-live-re-wire" >> $GITHUB_ENV
-          else
-            echo "BUILD_MODE=development" >> $GITHUB_ENV
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             echo "LAMBDA_NAME=oz-re-wire" >> $GITHUB_ENV
           fi
           echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
