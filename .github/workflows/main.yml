@@ -1,0 +1,46 @@
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set environment variables
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "BUILD_MODE=production" >> $GITHUB_ENV
+            echo "LAMBDA_NAME=ajf-live-re-wire" >> $GITHUB_ENV
+          else
+            echo "BUILD_MODE=development" >> $GITHUB_ENV
+            echo "LAMBDA_NAME=oz-re-wire" >> $GITHUB_ENV
+          fi
+          echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t ${{ env.LAMBDA_NAME }} .
+          docker tag ${{ env.LAMBDA_NAME }}:latest $ECR_REGISTRY/${{ env.LAMBDA_NAME }}:latest
+          docker push $ECR_REGISTRY/${{ env.LAMBDA_NAME }}:latest
+
+      - name: Update Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_NAME }} \
+            --image-uri ${{ steps.login-ecr.outputs.registry }}/${{ env.LAMBDA_NAME }}:latest
