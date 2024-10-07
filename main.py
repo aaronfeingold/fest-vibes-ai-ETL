@@ -1,6 +1,7 @@
 import os
 import logging
 from bs4 import BeautifulSoup
+from botocore.exceptions import ClientError
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from datetime import datetime, date
@@ -36,6 +37,7 @@ class ErrorType(Enum):
     NO_EVENTS = "NO_EVENTS"
     PARSE_ERROR = "PARSE_ERROR"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
+    AWS_ERROR = "AWS_ERROR"
 
 
 class ScrapingError(Exception):
@@ -169,6 +171,20 @@ def lambda_handler(event, context):
             {
                 "status": "error",
                 "error": {"type": error.error_type, "message": error.message},
+            },
+        )
+    except ClientError as e:
+        error_message = e.response["Error"]["Message"]
+        error_code = e.response["Error"]["Code"]
+        logger.error(f"AWS ClientError: {error_code} - {error_message}")
+        return create_response(
+            500,
+            {
+                "status": "error",
+                "error": {
+                    "type": ErrorType.AWS_ERROR,
+                    "message": f"AWS error occurred: {error_message}",
+                },
             },
         )
     except Exception as e:
