@@ -149,8 +149,7 @@ def scrape(base_url: str = None, date: date = None) -> list:
 
 def lambda_handler(event, context):
     try:
-        base_url = os.getenv("BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music")
-        events = scrape(base_url)
+        events = scrape()
         return create_response(200, {"status": "success", "data": events})
     except ScrapingError as e:
         logger.error(f"Scraping error: {e.error_type} - {e.message}")
