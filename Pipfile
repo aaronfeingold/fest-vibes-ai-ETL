@@ -9,7 +9,6 @@ beautifulsoup4 = "*"
 ipdb = "*"
 pytz = "*"
 botocore = "*"
-mypy-boto3-lambda = "*"
 
 [dev-packages]
 pytest = "*"

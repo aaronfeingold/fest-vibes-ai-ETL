@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "2e91350ac99f0eacee414412cb15382ef60ce6e532bd78871ec57a53745260e5"
+            "sha256": "b1286477a29cd1653f3f5b4a56d002be0c2190e09aae38daa20cb9eadc61d9a8"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -97,15 +97,6 @@
             ],
             "markers": "python_version >= '3.8'",
             "version": "==0.1.7"
-        },
-        "mypy-boto3-lambda": {
-            "hashes": [
-                "sha256:8473d71ee83aca8009d317e57cd2094a355ec90c7c536cf26e52db71b2f7528b",
-                "sha256:e42d9ce7e6a32841e4a6a2980f5f8634e2b0a35698e71d302a78e4d0de4223c6"
-            ],
-            "index": "pypi",
-            "markers": "python_version >= '3.8'",
-            "version": "==1.35.28"
         },
         "parso": {
             "hashes": [
