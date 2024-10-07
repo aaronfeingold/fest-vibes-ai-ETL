@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from main import (
     lambda_handler,
     scrape,
+    get_url,
     ScrapingError,
     ErrorType,
     SAMPLE_WEBSITE,
@@ -46,6 +47,19 @@ MOCK_DATE = yesterday.strftime(DATE_FORMAT)
 
 
 @pytest.fixture
+def mock_aws_context():
+    context = Mock()
+    context.aws_request_id = "test-request-id"
+    context.log_stream_name = "test-log-stream"
+    return context
+
+
+@pytest.fixture
+def mock_default_event():
+    return {"queryStringParameters": {}}
+
+
+@pytest.fixture
 def mock_urlopen():
     with patch("main.urlopen") as mock:
         mock_cm = MagicMock()
@@ -55,31 +69,17 @@ def mock_urlopen():
 
 
 @pytest.fixture
-def mock_date():
-    with patch("main.datetime") as mock_datetime:
-        mock_date = Mock(wraps=today)
-        mock_datetime.now.return_value = mock_date
-        mock_date.date.return_value = mock_date
-        mock_date.strftime.return_value = TODAY_FORMATTED
-        yield mock_date
-
-
-@pytest.fixture
 def mock_fetch_html():
     with patch("main.fetch_html") as mock:
         mock.return_value = SAMPLE_HTML
         yield mock
 
 
-def test_lambda_handler_success(mock_urlopen):
+def test_lambda_handler_success(mock_urlopen, mock_aws_context):
     # Create a mock event with a valid date query parameter
     event = {"queryStringParameters": {"date": MOCK_DATE}}
-    # Create a mock context with aws_request_id and log_stream_name
-    context = Mock()
-    context.aws_request_id = "test-request-id"
-    context.log_stream_name = "test-log-stream"
 
-    result = lambda_handler(event, context)
+    result = lambda_handler(event, mock_aws_context)
 
     assert result["statusCode"] == 200
     body = result["body"]
@@ -93,17 +93,24 @@ def test_lambda_handler_success(mock_urlopen):
     assert body["log_stream_name"] == "test-log-stream"
 
 
-def test_lambda_handler_invalid_date_format(mock_urlopen):
+def test_lambda_handler_success_with_no_query_string_params(
+    mock_urlopen, mock_aws_context, mock_default_event
+):
+
+    result = lambda_handler(mock_default_event, mock_aws_context)
+
+    assert result["statusCode"] == 200
+    body = result["body"]
+    assert body["date"] == TODAY_FORMATTED
+
+
+def test_lambda_handler_invalid_date_format(mock_urlopen, mock_aws_context):
     # Create a mock event with an invalid date format
     event = {
         "queryStringParameters": {"date": yesterday.strftime("%m-%d-%Y")}
     }  # Incorrect format
 
-    context = Mock()
-    context.aws_request_id = "test-request-id"
-    context.log_stream_name = "test-log-stream"
-
-    result = lambda_handler(event, context)
+    result = lambda_handler(event, mock_aws_context)
 
     # Assert the response structure and content
     assert result["statusCode"] == 400
@@ -115,12 +122,12 @@ def test_lambda_handler_invalid_date_format(mock_urlopen):
     assert body["log_stream_name"] == "test-log-stream"
 
 
-def test_lambda_handler_no_events(mock_urlopen):
+def test_lambda_handler_no_events(mock_urlopen, mock_aws_context, mock_default_event):
     mock_urlopen.return_value.__enter__.return_value.read.return_value = (
         NO_LISTING_HTML.encode("utf-8")
     )
 
-    result = lambda_handler(None, None)
+    result = lambda_handler(mock_default_event, mock_aws_context)
 
     assert result["statusCode"] == 404
     body = result["body"]
@@ -129,10 +136,10 @@ def test_lambda_handler_no_events(mock_urlopen):
     assert "No livewire-listing events found for this date" in body["error"]["message"]
 
 
-def test_lambda_handler_http_error(mock_urlopen):
+def test_lambda_handler_http_error(mock_urlopen, mock_aws_context, mock_default_event):
     mock_urlopen.side_effect = HTTPError("http://test.com", 404, "Not Found", {}, None)
 
-    result = lambda_handler(None, None)
+    result = lambda_handler(mock_default_event, mock_aws_context)
 
     assert result["statusCode"] == 404
     body = result["body"]
@@ -141,10 +148,10 @@ def test_lambda_handler_http_error(mock_urlopen):
     assert "Failed to fetch data: HTTP 404" in body["error"]["message"]
 
 
-def test_scrape_empty_response(mock_urlopen):
+def test_scrape_empty_response(mock_urlopen, mock_aws_context, mock_default_event):
     mock_urlopen.return_value.__enter__.return_value.read.return_value = b""
 
-    result = lambda_handler(None, None)
+    result = lambda_handler(mock_default_event, mock_aws_context)
 
     assert result["statusCode"] == 404
     body = result["body"]
@@ -164,18 +171,12 @@ def test_scrape_function_empty_response(mock_urlopen):
     assert "No livewire-listing events found" in str(exc_info.value)
 
 
-def test_url_formation(mock_urlopen, mock_date):
-    mock_urlopen.return_value.read.return_value = SAMPLE_HTML.encode("utf-8")
+def test_get_url():
+    # Call the function with the mock date
+    actual_url = get_url(MOCK_DATE)
+    EXPECTED_URL = f"{SAMPLE_WEBSITE}/calendar/livewire-music?date={MOCK_DATE}"
 
-    with patch("os.getenv") as mock_getenv:
-        mock_getenv.side_effect = lambda key, default: default
-        scrape()
-
-    expected_url = f"https://www.wwoz.org/calendar/livewire-music?date={MOCK_DATE}"
-    mock_urlopen.assert_called_once()
-    actual_url = mock_urlopen.call_args[0][0].full_url
+    # Assert that the actual URL matches the expected URL
     assert (
-        actual_url == expected_url
-    ), f"Expected URL: {expected_url}, but got: {actual_url}"
-
-    mock_date.date.return_value.strftime.assert_called_once_with("%Y-%m-%d")
+        actual_url == EXPECTED_URL
+    ), f"Expected URL: {EXPECTED_URL}, but got: {actual_url}"

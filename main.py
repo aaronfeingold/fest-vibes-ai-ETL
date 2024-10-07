@@ -34,6 +34,7 @@ DEFAULT_HEADERS = {
 }
 
 
+# TODO: make more use of these key-value pairs in the fn for analytics...
 class LambdaContext:
     aws_request_id: str
     log_stream_name: str
@@ -42,6 +43,34 @@ class LambdaContext:
     memory_limit_in_mb: int
     invoked_function_arn: str
     remaining_time_in_millis: int
+
+
+class AwsInfo(TypedDict):
+    aws_request_id: str
+    log_stream_name: str
+
+
+class SuccessResponseBase(TypedDict):
+    status: str
+    data: Any
+    date: str
+
+
+class ErrorResponseBase(TypedDict):
+    status: str
+    error: Dict[str, str]
+
+
+# Define the response types
+SuccessResponse = Union[SuccessResponseBase, AwsInfo]
+ErrorResponse = Union[ErrorResponseBase, AwsInfo]
+ResponseBody = Union[SuccessResponse, ErrorResponse]
+
+
+class ResponseType(TypedDict):
+    statusCode: int
+    headers: Dict[str, str]
+    body: ResponseBody
 
 
 # Keep track of the error types
@@ -135,34 +164,6 @@ def parse_html(html: str) -> List[Dict[str, str]]:
         )
 
 
-class AwsInfo(TypedDict):
-    aws_request_id: str
-    log_stream_name: str
-
-
-class SuccessResponseBase(TypedDict):
-    status: str
-    data: Any
-    date: str
-
-
-class ErrorResponseBase(TypedDict):
-    status: str
-    error: Dict[str, str]
-
-
-# Define the response types
-SuccessResponse = Union[SuccessResponseBase, AwsInfo]
-ErrorResponse = Union[ErrorResponseBase, AwsInfo]
-ResponseBody = Union[SuccessResponse, ErrorResponse]
-
-
-class ResponseType(TypedDict):
-    statusCode: int
-    headers: Dict[str, str]
-    body: ResponseBody
-
-
 def create_response(status_code: int, body: ResponseBody) -> ResponseType:
     if isinstance(body.get("error", {}).get("type"), ErrorType):
         body["error"]["type"] = body["error"]["type"].value
@@ -213,7 +214,7 @@ def validate_params(query_string_params: Dict[str, str]) -> None | str:
     return date
 
 
-def lambda_handler(event, context: LambdaContext) -> ResponseType:
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
     # record the AWS request ID and log stream name for all responses...
     aws_info = {
         "aws_request_id": context.aws_request_id,
