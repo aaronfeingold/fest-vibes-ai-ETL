@@ -2,7 +2,6 @@ import os
 import logging
 from bs4 import BeautifulSoup
 from botocore.exceptions import ClientError
-from mypy_boto3_lambda.type_defs import Context
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from datetime import datetime, date
@@ -33,6 +32,16 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
+
+
+class LambdaContext:
+    aws_request_id: str
+    log_stream_name: str
+    function_name: str
+    function_version: str
+    memory_limit_in_mb: int
+    invoked_function_arn: str
+    remaining_time_in_millis: int
 
 
 # Keep track of the error types
@@ -204,7 +213,7 @@ def validate_params(query_string_params: Dict[str, str]) -> None | str:
     return date
 
 
-def lambda_handler(event, context: Context) -> ResponseType:
+def lambda_handler(event, context: LambdaContext) -> ResponseType:
     # record the AWS request ID and log stream name for all responses...
     aws_info = {
         "aws_request_id": context.aws_request_id,
