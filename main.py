@@ -13,9 +13,14 @@ from enum import Enum
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Define the sample website to scrape
+# TODO: scrape from many sites...
 SAMPLE_WEBSITE = "https://www.wwoz.org"
-# Define the timezone for New Orleans (CST/CDT)
+# Define the timezone for New Orleans (CST/CDT),
+# since current version is New Orleans' events specific
 NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
+# Current date format for query params...subject to change on the website's whims
+DATE_FORMAT = "%Y-%m-%d"
 
 # Default headers for HTTP requests to prevent Bot detection
 DEFAULT_HEADERS = {
@@ -29,6 +34,7 @@ DEFAULT_HEADERS = {
 }
 
 
+# Keep track of the error types
 class ErrorType(Enum):
     GENERAL_ERROR = "GENERAL_ERROR"
     HTTP_ERROR = "HTTP_ERROR"
@@ -38,6 +44,7 @@ class ErrorType(Enum):
     PARSE_ERROR = "PARSE_ERROR"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
     AWS_ERROR = "AWS_ERROR"
+    VALUE_ERROR = "VALUE_ERROR"
 
 
 class ScrapingError(Exception):
@@ -55,7 +62,8 @@ class ScrapingError(Exception):
         super().__init__(self.message)
 
 
-def get_url(base_url: str, date_str: str) -> str:
+def get_url(date_str: str) -> str:
+    base_url = os.getenv("BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music")
     return f"{base_url}?date={date_str}"
 
 
@@ -130,14 +138,8 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def scrape(base_url: str = None, date: date = None) -> list:
-    base_url = base_url or os.getenv(
-        "BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music"
-    )
-    date = date or datetime.now(NEW_ORLEANS_TZ).date()
-    date_format = os.getenv("DATE_FORMAT", "%Y-%m-%d")
-    date_str = date.strftime(date_format)
-    url = get_url(base_url, date_str)
+def scrape(date: date = str) -> list:
+    url = get_url(date)
 
     try:
         html = fetch_html(url)
@@ -149,15 +151,61 @@ def scrape(base_url: str = None, date: date = None) -> list:
         raise
 
 
+def generate_date() -> date:
+    date = datetime.now(NEW_ORLEANS_TZ).date()
+    date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
+    return date.strftime(date_format)
+
+
+def validate_params(query_string_params: Dict[str, str]) -> None | str:
+    # validate the date parameter (only 1 parameter is expected)
+    date = query_string_params.get("date")
+    if date:
+        try:
+            datetime.strptime(date, DATE_FORMAT).date()
+        except ValueError as e:
+            raise ScrapingError(
+                message=f"Invalid date format: {e}",
+                error_type=ErrorType.VALUE_ERROR,
+                status_code=400,
+            )
+    else:
+        date = generate_date()
+
+    return date
+
+
 def lambda_handler(event, context):
+    # record the AWS request ID and log stream name for all responses...
+    aws_info = {
+        "aws_request_id": context.aws_request_id,
+        "log_stream_name": context.log_stream_name,
+    }
     try:
-        events = scrape()
-        return create_response(200, {"status": "success", "data": events})
+        # validate the parameters
+        date = validate_params(event.get("queryStringParameters", {}))
+        events = scrape(date)
+        return create_response(
+            200,
+            {
+                "status": "success",
+                "data": events,
+                "date": date,
+                **aws_info,
+            },
+        )
     except ScrapingError as e:
         logger.error(f"Scraping error: {e.error_type} - {e.message}")
         return create_response(
             e.status_code,
-            {"status": "error", "error": {"type": e.error_type, "message": e.message}},
+            {
+                "status": "error",
+                "error": {
+                    "type": e.error_type,
+                    "message": e.message,
+                },
+                **aws_info,
+            },
         )
     except HTTPError as e:
         error = ScrapingError(
@@ -170,7 +218,11 @@ def lambda_handler(event, context):
             error.status_code,
             {
                 "status": "error",
-                "error": {"type": error.error_type, "message": error.message},
+                "error": {
+                    "type": error.error_type,
+                    "message": error.message,
+                },
+                **aws_info,
             },
         )
     except ClientError as e:
@@ -185,6 +237,7 @@ def lambda_handler(event, context):
                     "type": ErrorType.AWS_ERROR,
                     "message": f"AWS error occurred: {error_message}",
                 },
+                **aws_info,
             },
         )
     except Exception as e:
@@ -197,5 +250,10 @@ def lambda_handler(event, context):
                     "type": ErrorType.UNKNOWN_ERROR,
                     "message": f"An unexpected error occurred: {e}",
                 },
+                **aws_info,
             },
         )
+
+
+if __name__ == "__main__":
+    print(lambda_handler({}, {}))

@@ -1,8 +1,15 @@
 import pytest
 from unittest.mock import patch, Mock, MagicMock
 from urllib.error import HTTPError
-from datetime import datetime
-from main import lambda_handler, scrape, ScrapingError, ErrorType, SAMPLE_WEBSITE
+from datetime import datetime, timedelta
+from main import (
+    lambda_handler,
+    scrape,
+    ScrapingError,
+    ErrorType,
+    SAMPLE_WEBSITE,
+    DATE_FORMAT,
+)
 
 SAMPLE_HTML = f"""
 <html>
@@ -32,6 +39,11 @@ SAMPLE_HTML = f"""
 
 NO_LISTING_HTML = "<html><body><div>No Data</div></body></html>"
 
+today = datetime.today()
+TODAY_FORMATTED = today.strftime(DATE_FORMAT)
+yesterday = today - timedelta(days=1)
+MOCK_DATE = yesterday.strftime(DATE_FORMAT)
+
 
 @pytest.fixture
 def mock_urlopen():
@@ -45,10 +57,10 @@ def mock_urlopen():
 @pytest.fixture
 def mock_date():
     with patch("main.datetime") as mock_datetime:
-        mock_date = Mock(wraps=datetime(2024, 9, 17))
+        mock_date = Mock(wraps=today)
         mock_datetime.now.return_value = mock_date
         mock_date.date.return_value = mock_date
-        mock_date.strftime.return_value = "2024-09-17"
+        mock_date.strftime.return_value = TODAY_FORMATTED
         yield mock_date
 
 
@@ -60,15 +72,47 @@ def mock_fetch_html():
 
 
 def test_lambda_handler_success(mock_urlopen):
-    result = lambda_handler(None, None)
+    # Create a mock event with a valid date query parameter
+    event = {"queryStringParameters": {"date": MOCK_DATE}}
+    # Create a mock context with aws_request_id and log_stream_name
+    context = Mock()
+    context.aws_request_id = "test-request-id"
+    context.log_stream_name = "test-log-stream"
+
+    result = lambda_handler(event, context)
 
     assert result["statusCode"] == 200
     body = result["body"]
     assert body["status"] == "success"
+    assert body["date"] == MOCK_DATE
     assert len(body["data"]) == 3
     assert body["data"][0] == {"Artist 1": f"{SAMPLE_WEBSITE}/events/1234"}
     assert body["data"][1] == {"Artist 2": f"{SAMPLE_WEBSITE}/events/5678"}
     assert body["data"][2] == {"Artist 3": f"{SAMPLE_WEBSITE}/events/9012"}
+    assert body["aws_request_id"] == "test-request-id"
+    assert body["log_stream_name"] == "test-log-stream"
+
+
+def test_lambda_handler_invalid_date_format(mock_urlopen):
+    # Create a mock event with an invalid date format
+    event = {
+        "queryStringParameters": {"date": yesterday.strftime("%m-%d-%Y")}
+    }  # Incorrect format
+
+    context = Mock()
+    context.aws_request_id = "test-request-id"
+    context.log_stream_name = "test-log-stream"
+
+    result = lambda_handler(event, context)
+
+    # Assert the response structure and content
+    assert result["statusCode"] == 400
+    body = result["body"]
+    assert body["status"] == "error"
+    assert body["error"]["message"].startswith("Invalid date format")
+    assert body["error"]["type"] == ErrorType.VALUE_ERROR.value
+    assert body["aws_request_id"] == "test-request-id"
+    assert body["log_stream_name"] == "test-log-stream"
 
 
 def test_lambda_handler_no_events(mock_urlopen):
@@ -127,7 +171,7 @@ def test_url_formation(mock_urlopen, mock_date):
         mock_getenv.side_effect = lambda key, default: default
         scrape()
 
-    expected_url = "https://www.wwoz.org/calendar/livewire-music?date=2024-09-17"
+    expected_url = f"https://www.wwoz.org/calendar/livewire-music?date={MOCK_DATE}"
     mock_urlopen.assert_called_once()
     actual_url = mock_urlopen.call_args[0][0].full_url
     assert (
