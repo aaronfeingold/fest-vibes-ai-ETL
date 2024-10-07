@@ -2,11 +2,12 @@ import os
 import logging
 from bs4 import BeautifulSoup
 from botocore.exceptions import ClientError
+from mypy_boto3_lambda.type_defs import Context
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from datetime import datetime, date
 import pytz
-from typing import Dict, Any, List
+from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
 
 # Configure logging
@@ -125,7 +126,35 @@ def parse_html(html: str) -> List[Dict[str, str]]:
         )
 
 
-def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
+class AwsInfo(TypedDict):
+    aws_request_id: str
+    log_stream_name: str
+
+
+class SuccessResponseBase(TypedDict):
+    status: str
+    data: Any
+    date: str
+
+
+class ErrorResponseBase(TypedDict):
+    status: str
+    error: Dict[str, str]
+
+
+# Define the response types
+SuccessResponse = Union[SuccessResponseBase, AwsInfo]
+ErrorResponse = Union[ErrorResponseBase, AwsInfo]
+ResponseBody = Union[SuccessResponse, ErrorResponse]
+
+
+class ResponseType(TypedDict):
+    statusCode: int
+    headers: Dict[str, str]
+    body: ResponseBody
+
+
+def create_response(status_code: int, body: ResponseBody) -> ResponseType:
     if isinstance(body.get("error", {}).get("type"), ErrorType):
         body["error"]["type"] = body["error"]["type"].value
 
@@ -138,7 +167,7 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def scrape(date: date = str) -> list:
+def scrape(date: date = str) -> list | List[Dict[str, str]]:
     url = get_url(date)
 
     try:
@@ -175,7 +204,7 @@ def validate_params(query_string_params: Dict[str, str]) -> None | str:
     return date
 
 
-def lambda_handler(event, context):
+def lambda_handler(event, context: Context) -> ResponseType:
     # record the AWS request ID and log stream name for all responses...
     aws_info = {
         "aws_request_id": context.aws_request_id,
