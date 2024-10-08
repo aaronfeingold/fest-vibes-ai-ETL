@@ -9,6 +9,7 @@ from main import (
     ScrapingError,
     ErrorType,
     SAMPLE_WEBSITE,
+    SAMPLE_ENDPOINT,
     DATE_FORMAT,
 )
 
@@ -174,7 +175,7 @@ def test_scrape_function_empty_response(mock_urlopen):
 def test_get_url():
     # Call the function with the mock date
     actual_url = get_url()
-    EXPECTED_URL = f"{SAMPLE_WEBSITE}/calendar/livewire-music"
+    EXPECTED_URL = f"{SAMPLE_WEBSITE}{SAMPLE_ENDPOINT}"
 
     # Assert that the actual URL matches the expected URL
     assert (
@@ -185,9 +186,7 @@ def test_get_url():
 def test_get_url_params():
     # Call the function with the mock date
     actual_url = get_url({"date": MOCK_DATE, "test": "value"})
-    EXPECTED_URL = (
-        f"{SAMPLE_WEBSITE}/calendar/livewire-music?date={MOCK_DATE}&?test=value"
-    )
+    EXPECTED_URL = f"{SAMPLE_WEBSITE}{SAMPLE_ENDPOINT}?date={MOCK_DATE}&?test=value"
 
     # Assert that the actual URL matches the expected URL
     assert (
