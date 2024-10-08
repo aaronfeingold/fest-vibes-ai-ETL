@@ -173,7 +173,18 @@ def test_scrape_function_empty_response(mock_urlopen):
 
 def test_get_url():
     # Call the function with the mock date
-    actual_url = get_url(MOCK_DATE)
+    actual_url = get_url()
+    EXPECTED_URL = f"{SAMPLE_WEBSITE}/calendar/livewire-music"
+
+    # Assert that the actual URL matches the expected URL
+    assert (
+        actual_url == EXPECTED_URL
+    ), f"Expected URL: {EXPECTED_URL}, but got: {actual_url}"
+
+
+def test_get_url_params():
+    # Call the function with the mock date
+    actual_url = get_url({"date": MOCK_DATE})
     EXPECTED_URL = f"{SAMPLE_WEBSITE}/calendar/livewire-music?date={MOCK_DATE}"
 
     # Assert that the actual URL matches the expected URL
