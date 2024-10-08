@@ -184,8 +184,10 @@ def test_get_url():
 
 def test_get_url_params():
     # Call the function with the mock date
-    actual_url = get_url({"date": MOCK_DATE})
-    EXPECTED_URL = f"{SAMPLE_WEBSITE}/calendar/livewire-music?date={MOCK_DATE}"
+    actual_url = get_url({"date": MOCK_DATE, "test": "value"})
+    EXPECTED_URL = (
+        f"{SAMPLE_WEBSITE}/calendar/livewire-music?date={MOCK_DATE}&?test=value"
+    )
 
     # Assert that the actual URL matches the expected URL
     assert (
