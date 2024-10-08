@@ -101,9 +101,16 @@ class ScrapingError(Exception):
         super().__init__(self.message)
 
 
-def get_url(date_str: str, endpoint: str = "/calendar/livewire-music") -> str:
+def get_url(
+    params: Dict[str, str] = {},
+    base_url: str = SAMPLE_WEBSITE,
+    endpoint: str = "/calendar/livewire-music",
+) -> str:
+    params_str = ""
+    if params:
+        params_str = "&".join([f"?{k}={v}" for k, v in params.items()])
     try:
-        return f"{os.getenv('BASE_URL', f'{SAMPLE_WEBSITE}{endpoint}')}?date={date_str}"
+        return f"{base_url}{endpoint}{params_str}"
     except (TypeError, Exception) as e:
         raise ScrapingError(
             message=f"Failed to create URL: {e}",
@@ -184,7 +191,7 @@ def create_response(status_code: int, body: ResponseBody) -> ResponseType:
 
 
 def scrape(date: date = str) -> list | List[Dict[str, str]]:
-    url = get_url(date)
+    url = get_url({"date": date})
 
     try:
         html = fetch_html(url)
@@ -202,7 +209,7 @@ def generate_date() -> date:
     return date.strftime(date_format)
 
 
-def validate_params(query_string_params: Dict[str, str]) -> None | str:
+def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
     # validate the date parameter (only 1 parameter is expected)
     date = query_string_params.get("date")
     if date:
@@ -217,7 +224,7 @@ def validate_params(query_string_params: Dict[str, str]) -> None | str:
     else:
         date = generate_date()
 
-    return date
+    return {**query_string_params, "date": date}
 
 
 def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
@@ -228,14 +235,14 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     }
     try:
         # validate the parameters
-        date = validate_params(event.get("queryStringParameters", {}))
-        events = scrape(date)
+        params = validate_params(event.get("queryStringParameters", {}))
+        events = scrape(params)
         return create_response(
             200,
             {
                 "status": "success",
                 "data": events,
-                "date": date,
+                "date": params["date"],
                 **aws_info,
             },
         )
@@ -298,7 +305,3 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
                 **aws_info,
             },
         )
-
-
-if __name__ == "__main__":
-    print(lambda_handler({}, {}))
