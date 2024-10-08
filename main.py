@@ -191,9 +191,8 @@ def create_response(status_code: int, body: ResponseBody) -> ResponseType:
 
 
 def scrape(date: date = str) -> list | List[Dict[str, str]]:
-    url = get_url({"date": date})
-
     try:
+        url = get_url({"date": date})
         html = fetch_html(url)
         return parse_html(html)
     except ScrapingError:
@@ -204,9 +203,34 @@ def scrape(date: date = str) -> list | List[Dict[str, str]]:
 
 
 def generate_date() -> date:
-    date = datetime.now(NEW_ORLEANS_TZ).date()
-    date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
-    return date.strftime(date_format)
+    try:
+        # Fetch the current date in New Orleans timezone
+        date = datetime.now(NEW_ORLEANS_TZ).date()
+    except Exception as e:
+        logger.error(f"Failed to generate current date: {e}")
+        raise ScrapingError(
+            message="Error generating the current date",
+            error_type=ErrorType.GENERAL_ERROR,
+            status_code=500,
+        )
+    try:
+        # Fetch date format from environment variable or fallback to default
+        date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
+        return date.strftime(date_format)
+    except ValueError as e:
+        logger.error(f"Invalid date format in environment: {e}")
+        raise ScrapingError(
+            message="Invalid date format in environment variables",
+            error_type=ErrorType.VALUE_ERROR,
+            status_code=400,
+        )
+    except Exception as e:
+        logger.error(f"Error occurred while formatting the date: {e}")
+        raise ScrapingError(
+            message="Error formatting the date",
+            error_type=ErrorType.GENERAL_ERROR,
+            status_code=500,
+        )
 
 
 def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
