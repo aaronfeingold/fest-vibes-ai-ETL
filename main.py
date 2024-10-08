@@ -101,9 +101,15 @@ class ScrapingError(Exception):
         super().__init__(self.message)
 
 
-def get_url(date_str: str) -> str:
-    base_url = os.getenv("BASE_URL", f"{SAMPLE_WEBSITE}/calendar/livewire-music")
-    return f"{base_url}?date={date_str}"
+def get_url(date_str: str, endpoint: str = "/calendar/livewire-music") -> str:
+    try:
+        return f"{os.getenv('BASE_URL', f'{SAMPLE_WEBSITE}{endpoint}')}?date={date_str}"
+    except (TypeError, Exception) as e:
+        raise ScrapingError(
+            message=f"Failed to create URL: {e}",
+            error_type=ErrorType.GENERAL_ERROR,
+            status_code=500,
+        )
 
 
 def fetch_html(url: str) -> str:
