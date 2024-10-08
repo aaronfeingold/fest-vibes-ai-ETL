@@ -16,6 +16,7 @@ logger.setLevel(logging.INFO)
 # Define the sample website to scrape
 # TODO: scrape from many sites...
 SAMPLE_WEBSITE = "https://www.wwoz.org"
+SAMPLE_ENDPOINT = "/calendar/livewire-music"
 # Define the timezone for New Orleans (CST/CDT),
 # since current version is New Orleans' events specific
 NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
@@ -104,7 +105,7 @@ class ScrapingError(Exception):
 def get_url(
     params: Dict[str, str] = {},
     base_url: str = SAMPLE_WEBSITE,
-    endpoint: str = "/calendar/livewire-music",
+    endpoint: str = SAMPLE_ENDPOINT,
 ) -> str:
     params_str = ""
     if params:
