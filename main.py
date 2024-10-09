@@ -178,32 +178,7 @@ def parse_html(html: str) -> List[Dict[str, str]]:
         )
 
 
-def create_response(status_code: int, body: ResponseBody) -> ResponseType:
-    if isinstance(body.get("error", {}).get("type"), ErrorType):
-        body["error"]["type"] = body["error"]["type"].value
-
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-        },
-        "body": body,
-    }
-
-
-def scrape(date: date = str) -> list | List[Dict[str, str]]:
-    try:
-        url = get_url({"date": date})
-        html = fetch_html(url)
-        return parse_html(html)
-    except ScrapingError:
-        raise
-    except Exception as e:
-        logger.error(f"Error occurred during scraping: {e}")
-        raise
-
-
-def generate_date() -> date:
+def generate_date_str() -> str:
     try:
         date = datetime.now(NEW_ORLEANS_TZ).date()
         date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
@@ -222,6 +197,19 @@ def generate_date() -> date:
         )
 
 
+def create_response(status_code: int, body: ResponseBody) -> ResponseType:
+    if isinstance(body.get("error", {}).get("type"), ErrorType):
+        body["error"]["type"] = body["error"]["type"].value
+
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json",
+        },
+        "body": body,
+    }
+
+
 def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
     # validate the date parameter (only 1 parameter is expected)
     date = query_string_params.get("date")
@@ -235,9 +223,21 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
                 status_code=400,
             )
     else:
-        date = generate_date()
+        date = generate_date_str()
 
     return {**query_string_params, "date": date}
+
+
+def scrape(date: date = str) -> list | List[Dict[str, str]]:
+    try:
+        url = get_url({"date": date})
+        html = fetch_html(url)
+        return parse_html(html)
+    except ScrapingError:
+        raise
+    except Exception as e:
+        logger.error(f"A {ErrorType.GENERAL_ERROR.value} occurred : {e}")
+        raise
 
 
 def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
