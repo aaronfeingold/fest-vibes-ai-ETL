@@ -210,6 +210,7 @@ def create_response(status_code: int, body: ResponseBody) -> ResponseType:
     }
 
 
+# TODO: add more validation for the various query string parameters
 def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
     # validate the date parameter (only 1 parameter is expected)
     date = query_string_params.get("date")
