@@ -180,9 +180,9 @@ def parse_html(html: str) -> List[Dict[str, str]]:
 
 def generate_date_str() -> str:
     try:
-        date = datetime.now(NEW_ORLEANS_TZ).date()
+        date_param = datetime.now(NEW_ORLEANS_TZ).date()
         date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
-        return date.strftime(date_format)
+        return date_param.strftime(date_format)
     except (ValueError, Exception) as e:
         msg = f"Error generating a date for params: {e}"
         logger.error(msg)
@@ -211,12 +211,12 @@ def create_response(status_code: int, body: ResponseBody) -> ResponseType:
 
 
 # TODO: add more validation for the various query string parameters
-def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
+def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
     # validate the date parameter (only 1 parameter is expected)
-    date = query_string_params.get("date")
-    if date:
+    date_param = query_string_params.get("date")
+    if date_param:
         try:
-            datetime.strptime(date, DATE_FORMAT).date()
+            datetime.strptime(date_param, DATE_FORMAT).date()
         except ValueError as e:
             raise ScrapingError(
                 message=f"Invalid date format: {e}",
@@ -224,14 +224,14 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> None | str:
                 status_code=400,
             )
     else:
-        date = generate_date_str()
+        date_param = generate_date_str()
 
-    return {**query_string_params, "date": date}
+    return {**query_string_params, "date": date_param}
 
 
-def scrape(date: date = str) -> list | List[Dict[str, str]]:
+def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
     try:
-        url = get_url(date)
+        url = get_url(params)
         html = fetch_html(url)
         return parse_html(html)
     except ScrapingError:
@@ -319,4 +319,3 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
                 **aws_info,
             },
         )
-
