@@ -165,7 +165,7 @@ def test_scrape_function_empty_response(mock_urlopen):
     mock_urlopen.return_value.__enter__.return_value.read.return_value = b""
 
     with pytest.raises(ScrapingError) as exc_info:
-        scrape()
+        scrape({})
 
     assert exc_info.value.error_type == ErrorType.NO_EVENTS
     assert exc_info.value.status_code == 404
