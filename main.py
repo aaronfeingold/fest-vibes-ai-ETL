@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from botocore.exceptions import ClientError
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from datetime import datetime, date
+from datetime import datetime
 import pytz
 from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
