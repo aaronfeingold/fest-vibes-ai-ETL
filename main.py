@@ -320,19 +320,3 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
             },
         )
 
-
-class MockLambdaContext:
-    aws_request_id = "mock_aws_request_id"
-    log_stream_name = "mock_log_stream_name"
-    function_name = "mock_function_name"
-    function_version = "1.0"
-    memory_limit_in_mb = 128
-    invoked_function_arn = "mock_invoked_function_arn"
-    remaining_time_in_millis = 300000  # Just an example
-
-
-if __name__ == "__main__":
-    # Create an instance of the mock context
-    mock_context = MockLambdaContext()
-    # Run the lambda_handler with an example event and mock context
-    print(lambda_handler({}, mock_context))
