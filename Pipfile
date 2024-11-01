@@ -8,6 +8,7 @@ urlopen = "*"
 beautifulsoup4 = "*"
 ipdb = "*"
 pytz = "*"
+botocore = "*"
 
 [dev-packages]
 pytest = "*"
