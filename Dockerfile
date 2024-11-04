@@ -8,20 +8,21 @@ COPY Pipfile Pipfile.lock ./
 # Install pipenv
 RUN pip install pipenv
 
-# Copy the application code
+# Install dependencies in system environment to avoid duplication across stages
+RUN pipenv install --ignore-pipfile --system
+# Uninstall pipenv after dependencies are installed
+RUN pip uninstall -y pipenv
+# Copy the application code (done once here to avoid repeating in stages)
 COPY . .
 
 # Development stage
 FROM base AS dev
-# Install all dependencies (including dev dependencies) for local testing
-RUN pipenv install --ignore-pipfile
-# Add the test_invoke.py script to the image
+# Copy the test script
 COPY tests/test_invoke.py .
+# Set entrypoint for development/testing
 ENTRYPOINT ["python3", "test_invoke.py"]
 
 # Production stage
 FROM base AS prod
-# Install only production dependencies in system environment and remove pipenv
-RUN pipenv install --deploy --ignore-pipfile --system && \
-    pip uninstall -y pipenv
+# Set entrypoint for production
 CMD ["main.lambda_handler"]

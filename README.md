@@ -81,7 +81,10 @@ PYTHONPATH=. pytest tests/test_main.py
 ### Docker Image
 - Lambda Invocation:
 ```
+# build and tag locally
 docker build --target dev -t ajf-live-re-wire:dev .
+# create new container from latest dev build
+docker run ajf-live-re-wire:dev
 ```
 
 
@@ -92,7 +95,7 @@ docker build --target dev -t ajf-live-re-wire:dev .
 
 - **build docker image**
 ```
-docker build  --build-arg ENVIRONMENT=prod -t ajf-live-re-wire .
+docker build  --target prod -t ajf-live-re-wire .
 ```
 - **login**
 ```
