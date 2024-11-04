@@ -15,5 +15,12 @@ RUN pip install pipenv && \
 # Copy the rest of the application code
 COPY . .
 
-# Command to run the Lambda function
+# Add the test_invoke.py script to the image
+COPY tests/test_invoke.py .
+
+# Use the Lambda handler for actual deployments
 CMD ["main.lambda_handler"]
+
+# To test locally, override CMD to run the test script
+ARG ENVIRONMENT=dev
+ENTRYPOINT ["python3", "test_invoke.py"]
