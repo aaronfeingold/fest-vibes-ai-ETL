@@ -41,7 +41,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          docker build -t ${{ env.LAMBDA_NAME }} .
+          docker build --target prod -t ${{ env.LAMBDA_NAME }} .
           docker tag ${{ env.LAMBDA_NAME }}:latest $ECR_REGISTRY/${{ env.LAMBDA_NAME }}:latest
           docker push $ECR_REGISTRY/${{ env.LAMBDA_NAME }}:latest
 
