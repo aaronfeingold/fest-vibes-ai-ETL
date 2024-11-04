@@ -78,10 +78,10 @@ python main.py
 ```sh
 PYTHONPATH=. pytest tests/test_main.py
 ```
-### Lambda Invocation
-- For Development:
+### Docker Image
+- Lambda Invocation:
 ```
-docker build --build-arg ENVIRONMENT=dev -t ajf-live-re-wire:dev .
+docker build --target dev -t ajf-live-re-wire:dev .
 ```
 
 
