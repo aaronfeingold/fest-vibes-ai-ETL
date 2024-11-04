@@ -73,9 +73,15 @@ python main.py
 ```
 
 ## Testing
+### Test Suites
 **Ensure the PYTHONPATH is set**
 ```sh
 PYTHONPATH=. pytest tests/test_main.py
+```
+### Lambda Invocation
+- For Development:
+```
+docker build --build-arg ENVIRONMENT=dev -t ajf-live-re-wire:dev .
 ```
 
 
@@ -86,7 +92,7 @@ PYTHONPATH=. pytest tests/test_main.py
 
 - **build docker image**
 ```
-docker build -t ajf-live-re-wire .
+docker build  --build-arg ENVIRONMENT=prod -t ajf-live-re-wire .
 ```
 - **login**
 ```
