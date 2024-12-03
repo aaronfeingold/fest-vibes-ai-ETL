@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import redis
 import psycopg2
@@ -11,6 +12,9 @@ from datetime import datetime
 import pytz
 from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
+
+load_dotenv()  # Load variables from .env
+pg_database_url = os.getenv("PG_DATABASE_URL")
 
 # Configure logging
 logger = logging.getLogger()
