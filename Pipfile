@@ -9,6 +9,8 @@ beautifulsoup4 = "*"
 ipdb = "*"
 pytz = "*"
 botocore = "*"
+redis = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 pytest = "*"
