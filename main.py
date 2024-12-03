@@ -357,7 +357,7 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     mode = event.get("mode", "read")
 
     if mode == "scraper_write_mode":
-        return run_scraper(aws_info)
+        return run_scraper(aws_info, event)
     elif mode == "db_read_mode":
         return read_from_db()
     else:
