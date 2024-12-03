@@ -1,6 +1,9 @@
 import os
+import json
 import logging
 from bs4 import BeautifulSoup
+import redis
+import psycopg2
 from botocore.exceptions import ClientError
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -241,12 +244,7 @@ def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
         raise
 
 
-def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
-    # record the AWS request ID and log stream name for all responses...
-    aws_info = {
-        "aws_request_id": context.aws_request_id,
-        "log_stream_name": context.log_stream_name,
-    }
+def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
     try:
         # validate the parameters
         params = validate_params(event.get("queryStringParameters", {}))
@@ -319,3 +317,48 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
                 **aws_info,
             },
         )
+
+
+# TODO: should return a ResponseType
+def read_from_db():
+    # Connect to Redis
+    redis_client = redis.StrictRedis(
+        host="redis-host", port=6379, decode_responses=True
+    )
+    cached_data = redis_client.get("latest_data")
+
+    if cached_data:
+        # Return cached data
+        return {"statusCode": 200, "body": cached_data}
+    else:
+        # Fallback to Postgres
+        conn = psycopg2.connect(
+            host="postgres-host", database="mydb", user="myuser", password="mypassword"
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM my_table")
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Cache the data again
+        redis_client.set("latest_data", json.dumps(rows))
+
+        return {"statusCode": 200, "body": json.dumps(rows)}
+
+
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
+    # record the AWS request ID and log stream name for all responses...
+    aws_info = {
+        "aws_request_id": context.aws_request_id,
+        "log_stream_name": context.log_stream_name,
+    }
+
+    mode = event.get("mode", "read")
+
+    if mode == "scraper_write_mode":
+        return run_scraper(aws_info)
+    elif mode == "db_read_mode":
+        return read_from_db()
+    else:
+        return {"statusCode": 400, "body": "Invalid mode"}
