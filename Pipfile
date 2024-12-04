@@ -12,6 +12,7 @@ botocore = "*"
 redis = "*"
 psycopg2-binary = "*"
 python-dotenv = "*"
+sqlalchemy = "*"
 
 [dev-packages]
 pytest = "*"
