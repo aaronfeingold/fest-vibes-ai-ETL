@@ -336,9 +336,7 @@ def read_from_db():
         return {"statusCode": 200, "body": cached_data}
     else:
         # Fallback to Postgres
-        conn = psycopg2.connect(
-            host="postgres-host", database="mydb", user="myuser", password="mypassword"
-        )
+        conn = psycopg2.connect(pg_database_url)
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM my_table")
         rows = cursor.fetchall()
