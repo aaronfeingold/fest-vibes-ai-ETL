@@ -4,24 +4,34 @@ import logging
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import redis
-import psycopg2
 from botocore.exceptions import ClientError
+import psycopg2
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from datetime import datetime
+from urllib.parse import urljoin
+from datetime import datetime, date
 import pytz
-from typing import Dict, Any, List, TypedDict, Union
+from typing import Dict, Any, List, TypedDict, Union, Optional
 from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime, date
-from typing import List, Optional
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from typing import List, Optional
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Date,
+    ARRAY,
+    ForeignKey,
+    Table,
+    Float,
+)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import sessionmaker, relationship, Session
+import requests
 
 load_dotenv()  # Load variables from .env
-pg_database_url = os.getenv("PG_DATABASE_URL")
 
 # Configure logging
 logger = logging.getLogger()
@@ -29,7 +39,7 @@ logger.setLevel(logging.INFO)
 
 # Define the sample website to scrape
 # TODO: scrape from many sites...
-SAMPLE_WEBSITE = "https://www.wwoz.org"
+SAMPLE_WEBSITE = os.environ.get("BASE_URL", "https://example.com")
 SAMPLE_ENDPOINT = "/calendar/livewire-music"
 # Define the timezone for New Orleans (CST/CDT),
 # since current version is New Orleans' events specific
@@ -47,111 +57,6 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
-
-
-@dataclass
-class Venue:
-    name: str
-    location: str
-    genres: List[str]
-
-
-@dataclass
-class Artist:
-    name: str
-    genres: List[str]
-
-
-@dataclass
-class Event:
-    artist: Artist
-    venue: Venue
-    performance_time: datetime
-    scrape_date: date
-
-
-class DatabaseHandler:
-    def __init__(self):
-        self.conn = psycopg2.connect(
-            dbname=os.environ["DB_NAME"],
-            user=os.environ["DB_USER"],
-            password=os.environ["DB_PASSWORD"],
-            host=os.environ["DB_HOST"],
-        )
-        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-
-    def close(self):
-        self.cursor.close()
-        self.conn.close()
-
-    def insert_event(self, event: Event):
-        try:
-            # First, insert or get venue
-            self.cursor.execute(
-                """
-                INSERT INTO venue (name, location)
-                VALUES (%s, %s)
-                ON CONFLICT (name) DO UPDATE SET location = EXCLUDED.location
-                RETURNING id
-            """,
-                (event.venue.name, event.venue.location),
-            )
-            venue_id = self.cursor.fetchone()["id"]
-
-            # Then, insert or get artist
-            self.cursor.execute(
-                """
-                INSERT INTO artist (name)
-                VALUES (%s)
-                ON CONFLICT (name) DO NOTHING
-                RETURNING id
-            """,
-                (event.artist.name,),
-            )
-            result = self.cursor.fetchone()
-            if result:
-                artist_id = result["id"]
-            else:
-                self.cursor.execute(
-                    "SELECT id FROM artist WHERE name = %s", (event.artist.name,)
-                )
-                artist_id = self.cursor.fetchone()["id"]
-
-            # Finally, insert event
-            self.cursor.execute(
-                """
-                INSERT INTO event (artist_id, venue_id, performance_time, scrape_date)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (artist_id, venue_id, performance_time)
-                DO UPDATE SET last_updated = CURRENT_TIMESTAMP
-                RETURNING id
-            """,
-                (artist_id, venue_id, event.performance_time, event.scrape_date),
-            )
-
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            raise DatabaseError(f"Failed to insert event: {str(e)}")
-
-    def get_events(self, start_date: date, end_date: date) -> List[Dict]:
-        self.cursor.execute(
-            """
-            SELECT
-                e.id as event_id,
-                e.performance_time,
-                a.name as artist_name,
-                v.name as venue_name,
-                v.location as venue_location
-            FROM event e
-            JOIN artist a ON e.artist_id = a.id
-            JOIN venue v ON e.venue_id = v.id
-            WHERE DATE(e.performance_time) BETWEEN %s AND %s
-            ORDER BY e.performance_time
-        """,
-            (start_date, end_date),
-        )
-        return self.cursor.fetchall()
 
 
 # TODO: make more use of these key-value pairs in the fn for analytics...
@@ -204,6 +109,7 @@ class ErrorType(Enum):
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
     AWS_ERROR = "AWS_ERROR"
     VALUE_ERROR = "VALUE_ERROR"
+    DATABASE_ERROR = "DATABASE_ERROR"
 
 
 class ScrapingError(Exception):
@@ -219,6 +125,208 @@ class ScrapingError(Exception):
         self.error_type = error_type
         self.status_code = status_code
         super().__init__(self.message)
+
+
+Base = declarative_base()
+
+# Association table for Venue-Genre relationship
+venue_genre_association = Table(
+    "venue_genre",
+    Base.metadata,
+    Column("venue_id", Integer, ForeignKey("venues.id"), primary_key=True),
+    Column("genre_id", Integer, ForeignKey("genres.id"), primary_key=True),
+)
+
+
+# Database Models
+class Venue(Base):
+    __tablename__ = "venues"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    location = Column(String)
+    # Geolocation fields
+    latitude = Column(Float)  # Latitude of the venue
+    longitude = Column(Float)  # Longitude of the venue
+    wwoz_venue_url = Column(String)
+    genres = relationship(
+        "Genre", secondary=venue_genre_association, back_populates="venues"
+    )
+    events = relationship("Event", back_populates="venue")
+    artists = relationship("Artist", secondary="venue_artists")
+
+    @hybrid_property
+    def full_url(self):
+        return urljoin(SAMPLE_WEBSITE, self.href)
+
+
+class Artist(Base):
+    __tablename__ = "artists"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    genres = Column(ARRAY(String))
+    events = relationship("Event", back_populates="artist")
+    venues = relationship("Venue", secondary="venue_artists")
+    related_artists = relationship(
+        "Artist",
+        secondary="artist_relations",
+        primaryjoin="Artist.id==ArtistRelation.artist_id",
+        secondaryjoin="Artist.id==ArtistRelation.related_artist_id",
+    )
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True)
+    artist_id = Column(Integer, ForeignKey("artists.id"))
+    venue_id = Column(Integer, ForeignKey("venues.id"))
+    performance_time = Column(DateTime(timezone=True), nullable=False)
+    scrape_date = Column(Date, nullable=False)
+    last_updated = Column(DateTime(timezone=True), server_default="now()")
+    wwoz_event_url = Column(String)
+    artist = relationship("Artist", back_populates="events")
+    venue = relationship("Venue", back_populates="events")
+
+    @hybrid_property
+    def full_url(self):
+        return urljoin(SAMPLE_WEBSITE, self.href)
+
+
+class Genre(Base):
+    __tablename__ = "genres"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+
+
+class ArtistRelation(Base):
+    __tablename__ = "artist_relations"
+
+    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+    related_artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+
+
+class VenueArtist(Base):
+    __tablename__ = "venue_artists"
+
+    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
+    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+
+
+class VenueEvent(Base):
+    __tablename__ = "venue_artists"
+
+    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
+
+
+# Data Transfer Objects
+@dataclass
+class EventDTO:
+    artist_name: str
+    venue_name: str
+    venue_location: str
+    performance_time: datetime
+    artist_url: str
+    venue_url: Optional[str] = None
+
+
+def geocode_address(address: str) -> dict:
+    api_key = "GOOGLE_MAPS_API_KEY"  # Replace with your actual API key
+    base_url = "https://maps.googleapis.com/maps/api/geocode/json"
+    params = {"address": address, "key": api_key}
+
+    response = requests.get(base_url, params=params)
+    data = response.json()
+
+    if data["status"] == "OK":
+        result = data["results"][0]
+        lat = result["geometry"]["location"]["lat"]
+        lng = result["geometry"]["location"]["lng"]
+        return {"latitude": lat, "longitude": lng}
+    else:
+        raise ValueError(
+            f"Geocoding failed: {data['status']} - {data.get('error_message')}"
+        )
+
+
+class DatabaseHandler:
+    def __init__(self):
+        db_url = os.getenv("PG_DATABASE_URL")
+        self.engine = create_engine(db_url)
+        self.Session = sessionmaker(bind=self.engine)
+
+    def create_tables(self):
+        Base.metadata.create_all(self.engine)
+
+    def save_events(self, events: List[EventDTO], scrape_date: date):
+        session = self.Session()
+        try:
+            for event in events:
+                # Get or create venue
+                venue = session.query(Venue).filter_by(name=event.venue_name).first()
+                if not venue:
+                    geolocation = geocode_address(event.venue_location)
+                    latitude = geolocation["latitude"]
+                    longitude = geolocation["longitude"]
+                    venue = Venue(
+                        name=event.venue_name,
+                        location=event.venue_location,
+                        wwoz_venue_url=event.venue_url,
+                        latitude=latitude,
+                        longitude=longitude,
+                    )
+                    session.add(venue)
+
+                # Get or create artist
+                artist = session.query(Artist).filter_by(name=event.artist_name).first()
+                if not artist:
+                    artist = Artist(name=event.artist_name)
+                    session.add(artist)
+
+                # Create event
+                new_event = Event(
+                    artist=artist,
+                    venue=venue,
+                    performance_time=event.performance_time,
+                    scrape_date=scrape_date,
+                )
+                session.add(new_event)
+
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise ScrapingError(
+                message=f"An unexpected error occurred while inserting: {e}",
+                error_type=ErrorType.DATABASE_ERROR,
+                status_code=500,
+            )
+
+        finally:
+            session.close()
+
+    def get_events_in_date_range(
+        session: Session, start_date: datetime, end_date: datetime
+    ):
+        """
+        Retrieve all events occurring in a specific range of dates.
+        :param session: SQLAlchemy session
+        :param start_date: The start of the date range
+        :param end_date: The end of the date range
+        :return: List of events
+        """
+        # Query the database for events within the date range
+        events = (
+            session.query(Event)
+            .filter(
+                Event.performance_time >= start_date, Event.performance_time <= end_date
+            )
+            .all()
+        )
+
+        return events
 
 
 def get_url(
@@ -264,7 +372,7 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str) -> List[Event]:
+def parse_html(html: str, date_str: str) -> List[Event]:
     try:
         soup = BeautifulSoup(html, "html.parser")
         events = []
@@ -279,43 +387,46 @@ def parse_html(html: str) -> List[Event]:
             )
 
         for panel in livewire_listing.find_all("div", class_="panel panel-default"):
-            for row in panel.find_all("div", class_="row"):
+            # Venue name is each panel's title
+            panel_title = panel.find("h3", class_="panel-title")
+            # Extract venue info
+            if not panel_title:
+                logger.warning("Panel is missing Venue Name...This is unexpected.")
+            # strip text to get venue name
+            venue_name = (
+                panel_title.find("a").text.strip() if panel_title else "Unknown Venue"
+            )
+            # get wwoz's venue href from the venue name
+            wwoz_venue_href = panel_title.find("a")["href"]
+            # find the body to ensure we are only dealing with the correct rows
+            panel_body = panel.find("div", class_="panel-body")
+
+            for row in panel_body.find_all("div", class_="row"):
                 calendar_info = row.find("div", class_="calendar-info")
                 if not calendar_info:
                     continue
 
-                artist_link = calendar_info.find("a")
-                if not artist_link:
+                wwoz_event_link = calendar_info.find("a")
+                if not wwoz_event_link:
                     continue
-
-                # Extract venue info
-                venue_div = row.find("div", class_="venue-info")
-                venue_name = (
-                    venue_div.find("h4").text.strip()
-                    if venue_div and venue_div.find("h4")
-                    else "Unknown Venue"
-                )
-                venue_location = (
-                    venue_div.find("p").text.strip()
-                    if venue_div and venue_div.find("p")
-                    else "Unknown Location"
-                )
-
+                # get artist name and wwoz event href
+                artist_name = wwoz_event_link.text.strip()
+                wwoz_event_href = wwoz_event_link["href"]
                 # Extract time
-                time_div = row.find("div", class_="time-info")
-                time_str = time_div.text.strip() if time_div else None
-                performance_time = parse_time(time_str) if time_str else None
+                time_str = calendar_info.find_all("p")[1].text.strip()
+                performance_time = parse_datetime(time_str) if time_str else None
 
                 event = Event(
                     artist=Artist(
-                        name=artist_link.text.strip(),
+                        name=artist_name,
                         genres=[],  # To be populated later
                     ),
                     venue=Venue(
                         name=venue_name,
-                        location=venue_location,
+                        wwoz_venue_href=wwoz_venue_href,
                         genres=[],  # To be populated later
                     ),
+                    wwoz_event_href=wwoz_event_href,
                     performance_time=performance_time,
                     scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
                 )
@@ -332,16 +443,27 @@ def parse_html(html: str) -> List[Event]:
         )
 
 
-def parse_time(time_str: Optional[str]) -> Optional[datetime]:
-    if not time_str:
-        return None
-
-    # Implement time parsing logic based on the website's format
-    # This is a placeholder - adjust according to actual time format
+def parse_datetime(date_str: str, time_str: str) -> datetime:
+    # Extract the relevant date and time portion
     try:
-        return datetime.strptime(time_str, "%I:%M %p")
-    except ValueError:
-        return None
+        # Parse the time string, e.g. "8:00pm"
+        time_part = time_str.strip()
+
+        # Combine the date and time into a full string
+        combined_str = f"{date_str} {time_part}"  # e.g., "1-5-2025 8:00pm"
+
+        # Parse the combined string into a naive datetime
+        naive_datetime = datetime.strptime(
+            combined_str, "%m-%d-%Y %I:%M%p"
+        )  # Adjust based on the date format you get
+
+        # Localize to the central timezone
+        localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
+        return localized_datetime
+    except Exception as e:
+        raise ValueError(
+            f"Error parsing datetime string: {date_str}  and time {time_str}"
+        ) from e
 
 
 def generate_date_str() -> str:
@@ -397,9 +519,8 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
 
 def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
     try:
-        url = get_url(params)
-        html = fetch_html(url)
-        return parse_html(html)
+        html = fetch_html(get_url(params))
+        return parse_html(html, params["date"])
     except ScrapingError:
         raise
     except Exception as e:
@@ -408,10 +529,15 @@ def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
 
 
 def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
+    db_service = DatabaseHandler()
     try:
         # validate the parameters
         params = validate_params(event.get("queryStringParameters", {}))
         events = scrape(params)
+        # Save to database
+        scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
+        db_service.save_events(events, scrape_date)
+
         return create_response(
             200,
             {
@@ -514,12 +640,21 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
         "aws_request_id": context.aws_request_id,
         "log_stream_name": context.log_stream_name,
     }
+    # POST and GET To AWS API Gateway only; reuses the same image
+    http_method = event.get("httpMethod", "GET")
 
-    mode = event.get("mode", "read")
-
-    if mode == "scraper_write_mode":
-        return run_scraper(aws_info, event)
-    elif mode == "db_read_mode":
-        return read_from_db()
-    else:
-        return {"statusCode": 400, "body": "Invalid mode"}
+    try:
+        if http_method == "POST":
+            return run_scraper(aws_info, event)
+        elif http_method == "GET":
+            return read_from_db()
+        else:
+            return create_response(
+                400,
+                {
+                    "status": "error",
+                    "error": "Invalid HTTP method",
+                },
+            )
+    except Exception as e:
+        return create_response(500, {"status": "error", "error": str(e)})
