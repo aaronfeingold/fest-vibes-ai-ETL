@@ -12,6 +12,13 @@ from datetime import datetime
 import pytz
 from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
+from dataclasses import dataclass
+from datetime import datetime, date
+from typing import List, Optional
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from typing import List, Optional
 
 load_dotenv()  # Load variables from .env
 pg_database_url = os.getenv("PG_DATABASE_URL")
@@ -40,6 +47,111 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
+
+
+@dataclass
+class Venue:
+    name: str
+    location: str
+    genres: List[str]
+
+
+@dataclass
+class Artist:
+    name: str
+    genres: List[str]
+
+
+@dataclass
+class Event:
+    artist: Artist
+    venue: Venue
+    performance_time: datetime
+    scrape_date: date
+
+
+class DatabaseHandler:
+    def __init__(self):
+        self.conn = psycopg2.connect(
+            dbname=os.environ["DB_NAME"],
+            user=os.environ["DB_USER"],
+            password=os.environ["DB_PASSWORD"],
+            host=os.environ["DB_HOST"],
+        )
+        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+
+    def close(self):
+        self.cursor.close()
+        self.conn.close()
+
+    def insert_event(self, event: Event):
+        try:
+            # First, insert or get venue
+            self.cursor.execute(
+                """
+                INSERT INTO venue (name, location)
+                VALUES (%s, %s)
+                ON CONFLICT (name) DO UPDATE SET location = EXCLUDED.location
+                RETURNING id
+            """,
+                (event.venue.name, event.venue.location),
+            )
+            venue_id = self.cursor.fetchone()["id"]
+
+            # Then, insert or get artist
+            self.cursor.execute(
+                """
+                INSERT INTO artist (name)
+                VALUES (%s)
+                ON CONFLICT (name) DO NOTHING
+                RETURNING id
+            """,
+                (event.artist.name,),
+            )
+            result = self.cursor.fetchone()
+            if result:
+                artist_id = result["id"]
+            else:
+                self.cursor.execute(
+                    "SELECT id FROM artist WHERE name = %s", (event.artist.name,)
+                )
+                artist_id = self.cursor.fetchone()["id"]
+
+            # Finally, insert event
+            self.cursor.execute(
+                """
+                INSERT INTO event (artist_id, venue_id, performance_time, scrape_date)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (artist_id, venue_id, performance_time)
+                DO UPDATE SET last_updated = CURRENT_TIMESTAMP
+                RETURNING id
+            """,
+                (artist_id, venue_id, event.performance_time, event.scrape_date),
+            )
+
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise DatabaseError(f"Failed to insert event: {str(e)}")
+
+    def get_events(self, start_date: date, end_date: date) -> List[Dict]:
+        self.cursor.execute(
+            """
+            SELECT
+                e.id as event_id,
+                e.performance_time,
+                a.name as artist_name,
+                v.name as venue_name,
+                v.location as venue_location
+            FROM event e
+            JOIN artist a ON e.artist_id = a.id
+            JOIN venue v ON e.venue_id = v.id
+            WHERE DATE(e.performance_time) BETWEEN %s AND %s
+            ORDER BY e.performance_time
+        """,
+            (start_date, end_date),
+        )
+        return self.cursor.fetchall()
 
 
 # TODO: make more use of these key-value pairs in the fn for analytics...
@@ -152,29 +264,64 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str) -> List[Dict[str, str]]:
+def parse_html(html: str) -> List[Event]:
     try:
         soup = BeautifulSoup(html, "html.parser")
-        links = []
+        events = []
         livewire_listing = soup.find("div", class_="livewire-listing")
+
         if not livewire_listing:
             logger.warning("No livewire-listing found on the page.")
             raise ScrapingError(
-                message="No livewire-listing events found for this date",
+                message="No events found for this date",
                 error_type=ErrorType.NO_EVENTS,
                 status_code=404,
             )
 
         for panel in livewire_listing.find_all("div", class_="panel panel-default"):
             for row in panel.find_all("div", class_="row"):
-                artist_link = row.find("div", class_="calendar-info").find("a")
-                if artist_link:
-                    href = artist_link["href"]
-                    full_href = (
-                        href if SAMPLE_WEBSITE in href else f"{SAMPLE_WEBSITE}{href}"
-                    )
-                    links.append({artist_link.text.strip(): full_href})
-        return links
+                calendar_info = row.find("div", class_="calendar-info")
+                if not calendar_info:
+                    continue
+
+                artist_link = calendar_info.find("a")
+                if not artist_link:
+                    continue
+
+                # Extract venue info
+                venue_div = row.find("div", class_="venue-info")
+                venue_name = (
+                    venue_div.find("h4").text.strip()
+                    if venue_div and venue_div.find("h4")
+                    else "Unknown Venue"
+                )
+                venue_location = (
+                    venue_div.find("p").text.strip()
+                    if venue_div and venue_div.find("p")
+                    else "Unknown Location"
+                )
+
+                # Extract time
+                time_div = row.find("div", class_="time-info")
+                time_str = time_div.text.strip() if time_div else None
+                performance_time = parse_time(time_str) if time_str else None
+
+                event = Event(
+                    artist=Artist(
+                        name=artist_link.text.strip(),
+                        genres=[],  # To be populated later
+                    ),
+                    venue=Venue(
+                        name=venue_name,
+                        location=venue_location,
+                        genres=[],  # To be populated later
+                    ),
+                    performance_time=performance_time,
+                    scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
+                )
+                events.append(event)
+
+        return events
     except ScrapingError:
         raise
     except Exception as e:
@@ -183,6 +330,18 @@ def parse_html(html: str) -> List[Dict[str, str]]:
             error_type=ErrorType.PARSE_ERROR,
             status_code=500,
         )
+
+
+def parse_time(time_str: Optional[str]) -> Optional[datetime]:
+    if not time_str:
+        return None
+
+    # Implement time parsing logic based on the website's format
+    # This is a placeholder - adjust according to actual time format
+    try:
+        return datetime.strptime(time_str, "%I:%M %p")
+    except ValueError:
+        return None
 
 
 def generate_date_str() -> str:
