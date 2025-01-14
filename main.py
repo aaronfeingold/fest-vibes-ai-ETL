@@ -227,7 +227,7 @@ class VenueGenre(Base):
     __tablename__ = "venue_genres"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
-    event_id = Column(Integer, ForeignKey("genre.id"), primary_key=True)
+    genre_id = Column(Integer, ForeignKey("genre.id"), primary_key=True)
 
 
 # Data Transfer Objects
