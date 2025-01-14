@@ -411,37 +411,90 @@ def generate_url(
         )
 
 
-def fetch_html(url: str) -> str:
-    try:
-        req = Request(url, headers=DEFAULT_HEADERS)
-        with urlopen(req) as response:
-            return response.read().decode("utf-8")
-    except HTTPError as e:
-        raise ScrapingError(
-            message=f"Failed to fetch data: HTTP {e.code}",
-            error_type=ErrorType.HTTP_ERROR,
-            status_code=e.code,
-        )
-    except URLError as e:
-        raise ScrapingError(
-            message=f"Failed to connect to server: {e.reason}",
-            error_type=ErrorType.URL_ERROR,
-            status_code=503,
-        )
-    except Exception as e:
-        raise ScrapingError(
-            message=f"An unexpected error occurred while fetching data: {e}",
-            error_type=ErrorType.FETCH_ERROR,
-            status_code=500,
-        )
-
-
 class DeepScraper:
     def __init__(self):
         self.session = None
         self.seen_urls = set()
 
-    def parse_html(html: str, date_str: str) -> List[Event]:
+    async def fetch_html(self, url: str) -> str:
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+        try:
+            async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
+                if response.status != 200:
+                    raise ScrapingError(
+                        message=f"Failed to fetch data: HTTP {response.status}",
+                        error_type=ErrorType.HTTP_ERROR,
+                        status_code=response.status,
+                    )
+                return await response.text()
+        except HTTPError as e:
+            raise ScrapingError(
+                message=f"Failed to fetch data: HTTP {e.code}",
+                error_type=ErrorType.HTTP_ERROR,
+                status_code=e.code,
+            )
+        except URLError as e:
+            raise ScrapingError(
+                message=f"Failed to connect to server: {e.reason}",
+                error_type=ErrorType.URL_ERROR,
+                status_code=503,
+            )
+        except Exception as e:
+            raise ScrapingError(
+                message=f"An unexpected error occurred while fetching data: {e}",
+                error_type=ErrorType.FETCH_ERROR,
+                status_code=500,
+            )
+
+    def parse_datetime(date_str: str, time_str: str) -> datetime:
+        # Extract the relevant date and time portion
+        try:
+            # Parse the time string, e.g. "8:00pm"
+            time_stripped = time_str.strip()
+            time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
+            match = re.search(time_pattern, time_stripped, re.IGNORECASE)
+            # default to 12:00am if no time is found
+            extracted_time = match.group() if match else "12:00am"
+            # Combine the date and time into a full string
+            combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
+
+            # Parse the combined string into a naive datetime
+            naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
+
+            # Localize to the central timezone
+            localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
+            return localized_datetime
+        except Exception as e:
+            raise ValueError(
+                f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
+            ) from e
+
+    async def get_venue_details(self, wwoz_venue_href: str) -> dict:
+        """Deep crawl venue page to get additional details"""
+        if wwoz_venue_href in self.seen_urls:
+            return {}
+
+        self.seen_urls.add(wwoz_venue_href)
+        html = await self.fetch_page(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
+        soup = BeautifulSoup(html, "html.parser")
+        return soup.find("div", class_="VENUE-DATA")
+
+    async def get_artist_details(self, wwoz_event_href: str, artist_name: str) -> dict:
+        """Deep crawl venue page to get additional details"""
+        if wwoz_event_href in self.seen_urls:
+            return {}
+
+        self.seen_urls.add(wwoz_event_href)
+        html = await self.fetch_page(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
+        soup = BeautifulSoup(html, "html.parser")
+        event_data = soup.find("div", class_="EVENT-DATA")
+        related_artist_links = event_data.find_all("a", class_="related-artist-link")
+        # find the artist name in the related artist links if links exist
+
+        # add all other artists in list that do match the artist as 'related artists'
+
+    async def parse_html(self, html: str, date_str: str) -> List[Event]:
         try:
             soup = BeautifulSoup(html, "html.parser")
             events = []
@@ -468,8 +521,8 @@ class DeepScraper:
                     else "Unknown Venue"
                 )
                 # get wwoz's venue href from the venue name
-                # TODO: use href to scrape more data
                 wwoz_venue_href = panel_title.find("a")["href"]
+                venue_data = await self.get_venue_details(wwoz_venue_href)
                 # find the panel's body to ensure we are only dealing with the correct rows
                 panel_body = panel.find("div", class_="panel-body")
 
@@ -486,9 +539,10 @@ class DeepScraper:
                     artist_name = wwoz_event_link.text.strip()
                     wwoz_event_href = wwoz_event_link["href"]
                     # Extract time
+                    artist_data = await self.get_artist_details(wwoz_event_href)
                     time_str = calendar_info.find_all("p")[1].text.strip()
                     performance_time = (
-                        parse_datetime(date_str, time_str) if time_str else None
+                        self.parse_datetime(date_str, time_str) if time_str else None
                     )
 
                     event = Event(
@@ -516,30 +570,6 @@ class DeepScraper:
                 error_type=ErrorType.PARSE_ERROR,
                 status_code=500,
             )
-
-
-def parse_datetime(date_str: str, time_str: str) -> datetime:
-    # Extract the relevant date and time portion
-    try:
-        # Parse the time string, e.g. "8:00pm"
-        time_stripped = time_str.strip()
-        time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
-        match = re.search(time_pattern, time_stripped, re.IGNORECASE)
-        # default to 12:00am if no time is found
-        extracted_time = match.group() if match else "12:00am"
-        # Combine the date and time into a full string
-        combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
-
-        # Parse the combined string into a naive datetime
-        naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
-
-        # Localize to the central timezone
-        localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
-        return localized_datetime
-    except Exception as e:
-        raise ValueError(
-            f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
-        ) from e
 
 
 def generate_date_str() -> str:
@@ -594,9 +624,10 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
 
 
 def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
+    deep_scraper = DeepScraper()
     try:
-        html = fetch_html(generate_url(params))
-        return parse_html(html, params["date"])
+        html = deep_scraper.fetch_html(generate_url(params))
+        return deep_scraper.parse_html(html, params["date"])
     except ScrapingError:
         raise
     except Exception as e:
