@@ -164,6 +164,7 @@ class Artist(Base):
     typical_set_length = Column(Interval)  # Added for scheduling
     events = relationship("Event", back_populates="artist")
     venues = relationship("Venue", secondary="venue_artists")
+    genres = relationship("Genre", secondary="artist_genres", back_populates="artists")
     related_artists = relationship(
         "Artist",
         secondary="artist_relations",
