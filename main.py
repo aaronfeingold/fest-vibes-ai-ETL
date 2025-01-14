@@ -148,7 +148,7 @@ class Venue(Base):
 
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
-    artists = relationship("Artist", secondary="venue_artists")
+    artists = relationship("Artist", secondary="venue_artists", back_populates="venues")
 
     @hybrid_property
     def full_url(self):
