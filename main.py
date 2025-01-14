@@ -31,6 +31,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import sessionmaker, relationship, Session
 import requests
+import asyncio
+import aiohttp
 
 load_dotenv()  # Load variables from .env
 
@@ -434,79 +436,86 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str, date_str: str) -> List[Event]:
-    try:
-        soup = BeautifulSoup(html, "html.parser")
-        events = []
-        livewire_listing = soup.find("div", class_="livewire-listing")
+class DeepScraper:
+    def __init__(self):
+        self.session = None
+        self.seen_urls = set()
 
-        if not livewire_listing:
-            logger.warning("No livewire-listing found on the page.")
+    def parse_html(html: str, date_str: str) -> List[Event]:
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            events = []
+            livewire_listing = soup.find("div", class_="livewire-listing")
+
+            if not livewire_listing:
+                logger.warning("No livewire-listing found on the page.")
+                raise ScrapingError(
+                    message="No events found for this date",
+                    error_type=ErrorType.NO_EVENTS,
+                    status_code=404,
+                )
+
+            for panel in livewire_listing.find_all("div", class_="panel panel-default"):
+                # Venue name is each panel's title
+                panel_title = panel.find("h3", class_="panel-title")
+                # Extract venue info
+                if not panel_title:
+                    logger.warning("Panel is missing Venue Name...This is unexpected.")
+                # strip text to get venue name
+                venue_name = (
+                    panel_title.find("a").text.strip()
+                    if panel_title
+                    else "Unknown Venue"
+                )
+                # get wwoz's venue href from the venue name
+                # TODO: use href to scrape more data
+                wwoz_venue_href = panel_title.find("a")["href"]
+                # find the panel's body to ensure we are only dealing with the correct rows
+                panel_body = panel.find("div", class_="panel-body")
+
+                for row in panel_body.find_all("div", class_="row"):
+                    calendar_info = row.find("div", class_="calendar-info")
+                    if not calendar_info:
+                        continue
+                    # the event link inner text is the artist name, not a link to the artists page though
+                    # is the link to more event details ie related acts, which can be link to the artist, but not always
+                    wwoz_event_link = calendar_info.find("a")
+                    if not wwoz_event_link:
+                        continue
+                    # get artist name and wwoz event href
+                    artist_name = wwoz_event_link.text.strip()
+                    wwoz_event_href = wwoz_event_link["href"]
+                    # Extract time
+                    time_str = calendar_info.find_all("p")[1].text.strip()
+                    performance_time = (
+                        parse_datetime(date_str, time_str) if time_str else None
+                    )
+
+                    event = Event(
+                        artist=Artist(
+                            name=artist_name,
+                            genres=[],  # To be populated later
+                        ),
+                        venue=Venue(
+                            name=venue_name,
+                            wwoz_venue_href=wwoz_venue_href,
+                            genres=[],  # To be populated later
+                        ),
+                        wwoz_event_href=wwoz_event_href,
+                        performance_time=performance_time,
+                        scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
+                    )
+                    events.append(event)
+
+            return events
+        except ScrapingError:
+            raise
+        except Exception as e:
             raise ScrapingError(
-                message="No events found for this date",
-                error_type=ErrorType.NO_EVENTS,
-                status_code=404,
+                message=f"Failed to parse webpage content: {e}",
+                error_type=ErrorType.PARSE_ERROR,
+                status_code=500,
             )
-
-        for panel in livewire_listing.find_all("div", class_="panel panel-default"):
-            # Venue name is each panel's title
-            panel_title = panel.find("h3", class_="panel-title")
-            # Extract venue info
-            if not panel_title:
-                logger.warning("Panel is missing Venue Name...This is unexpected.")
-            # strip text to get venue name
-            venue_name = (
-                panel_title.find("a").text.strip() if panel_title else "Unknown Venue"
-            )
-            # get wwoz's venue href from the venue name
-            # TODO: use href to scrape more data
-            wwoz_venue_href = panel_title.find("a")["href"]
-            # find the panel's body to ensure we are only dealing with the correct rows
-            panel_body = panel.find("div", class_="panel-body")
-
-            for row in panel_body.find_all("div", class_="row"):
-                calendar_info = row.find("div", class_="calendar-info")
-                if not calendar_info:
-                    continue
-                # the event link inner text is the artist name, not a link to the artists page though
-                # is the link to more event details ie related acts, which can be link to the artist, but not always
-                wwoz_event_link = calendar_info.find("a")
-                if not wwoz_event_link:
-                    continue
-                # get artist name and wwoz event href
-                artist_name = wwoz_event_link.text.strip()
-                wwoz_event_href = wwoz_event_link["href"]
-                # Extract time
-                time_str = calendar_info.find_all("p")[1].text.strip()
-                performance_time = (
-                    parse_datetime(date_str, time_str) if time_str else None
-                )
-
-                event = Event(
-                    artist=Artist(
-                        name=artist_name,
-                        genres=[],  # To be populated later
-                    ),
-                    venue=Venue(
-                        name=venue_name,
-                        wwoz_venue_href=wwoz_venue_href,
-                        genres=[],  # To be populated later
-                    ),
-                    wwoz_event_href=wwoz_event_href,
-                    performance_time=performance_time,
-                    scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
-                )
-                events.append(event)
-
-        return events
-    except ScrapingError:
-        raise
-    except Exception as e:
-        raise ScrapingError(
-            message=f"Failed to parse webpage content: {e}",
-            error_type=ErrorType.PARSE_ERROR,
-            status_code=500,
-        )
 
 
 def parse_datetime(date_str: str, time_str: str) -> datetime:
