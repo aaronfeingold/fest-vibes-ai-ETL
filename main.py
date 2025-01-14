@@ -22,7 +22,7 @@ from sqlalchemy import (
     String,
     DateTime,
     Date,
-    ARRAY,
+    Index,
     ForeignKey,
     Float,
     Interval,
@@ -206,6 +206,7 @@ class Genre(Base):
         "Artist", secondary="artist_genres", back_populates="artists"
     )
 
+
 # Join Tables
 class ArtistRelation(Base):
     __tablename__ = "artist_relations"
@@ -243,6 +244,12 @@ class ArtistGenre(Base):
     )
     genre_id = Column(
         Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # Add indexes
+    __table_args__ = (
+        Index("ix_artist_genre_artist_id", artist_id),
+        Index("ix_artist_genre_genre_id", genre_id),
     )
 
 
