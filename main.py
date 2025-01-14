@@ -285,9 +285,7 @@ class DatabaseHandler:
         try:
             for event in events:
                 # Get or create venue
-                venue = (
-                    session.query(Venue).filter_by(name=event.venue.venue_name).first()
-                )
+                venue = session.query(Venue).filter_by(name=event.venue.name).first()
                 if not venue:
                     geolocation = geocode_address(event.venue_location)
                     latitude = geolocation["latitude"]
@@ -669,10 +667,8 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     }
     # POST and GET To AWS API Gateway only; reuses the same image
     http_method = event.get("httpMethod", "GET")
-    print("running scrappers")
     try:
         if http_method == "POST":
-            print("running scrappers")
             return run_scraper(aws_info, event)
         elif http_method == "GET":
             return read_from_db()
