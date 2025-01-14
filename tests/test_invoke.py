@@ -16,7 +16,10 @@ class LambdaTestContext:
 
 
 # Simulated event data
-event = {"queryStringParameters": {"date": "2024-11-01"}}
+event = {
+    "queryStringParameters": {"date": "2025-01-13"},
+    "httpMethod": "POST",
+}
 
 # Invoke the handler and print the result
 result = lambda_handler(event, LambdaTestContext())
