@@ -143,8 +143,8 @@ class Venue(Base):
     latitude = Column(Float)  # Latitude of the venue
     longitude = Column(Float)  # Longitude of the venue
     wwoz_venue_href = Column(String)
-    capacity = Column(Integer)  # Added for festival planning
-    indoor = Column(Boolean)  # Added for festival planning
+    capacity = Column(Integer)  # Added for festival planning; attr not yet available
+    indoor = Column(Boolean)  # Added for festival planning; attr not yet available
 
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
@@ -160,7 +160,6 @@ class Artist(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    genres = Column(ARRAY(String))
     popularity_score = Column(Float)  # Added for festival planning
     typical_set_length = Column(Interval)  # Added for scheduling
     events = relationship("Event", back_populates="artist")
@@ -202,6 +201,9 @@ class Genre(Base):
     name = Column(String, nullable=False, unique=True)
 
     venues = relationship("Venue", secondary="venue_genres", back_populates="genres")
+    artists = relationship(
+        "Artist", secondary="artist_genres", back_populates="artists"
+    )
 
 
 class ArtistRelation(Base):
