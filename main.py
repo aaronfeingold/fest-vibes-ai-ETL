@@ -163,7 +163,7 @@ class Artist(Base):
     popularity_score = Column(Float)  # Added for festival planning
     typical_set_length = Column(Interval)  # Added for scheduling
     events = relationship("Event", back_populates="artist")
-    venues = relationship("Venue", secondary="venue_artists")
+    venues = relationship("Venue", secondary="venue_artists", back_populates="artists")
     genres = relationship("Genre", secondary="artist_genres", back_populates="artists")
     related_artists = relationship(
         "Artist",
@@ -214,12 +214,24 @@ class ArtistRelation(Base):
     artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
     related_artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
 
+    # Add indexes for better performance
+    __table_args__ = (
+        Index("ix_artist_relation_artist_id", artist_id),
+        Index("ix_artist_relation_related_artist_id", related_artist_id),
+    )
+
 
 class VenueArtist(Base):
     __tablename__ = "venue_artists"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
     artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+
+    # Add indexes for better performance
+    __table_args__ = (
+        Index("ix_venue_artist_venue_id", venue_id),
+        Index("ix_venue_artist_artist_id", artist_id),
+    )
 
 
 class VenueEvent(Base):
@@ -228,12 +240,24 @@ class VenueEvent(Base):
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
     event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
 
+    # Add indexes for better performance
+    __table_args__ = (
+        Index("ix_venue_event_venue_id", venue_id),
+        Index("ix_venue_event_event_id", event_id),
+    )
+
 
 class VenueGenre(Base):
     __tablename__ = "venue_genres"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
     genre_id = Column(Integer, ForeignKey("genres.id"), primary_key=True)
+
+    # Add indexes for better performance
+    __table_args__ = (
+        Index("ix_venue_genre_venue_id", venue_id),
+        Index("ix_venue_genre_genre_id", genre_id),
+    )
 
 
 class ArtistGenre(Base):
