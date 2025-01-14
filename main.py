@@ -1,11 +1,11 @@
 import os
+import re
 import json
 import logging
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import redis
 from botocore.exceptions import ClientError
-import psycopg2
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
@@ -24,7 +24,6 @@ from sqlalchemy import (
     Date,
     ARRAY,
     ForeignKey,
-    Table,
     Float,
     Interval,
 )
@@ -132,14 +131,6 @@ class ScrapingError(Exception):
 
 Base = declarative_base()
 
-# Association table for Venue-Genre relationship
-venue_genre_association = Table(
-    "venue_genre",
-    Base.metadata,
-    Column("venue_id", Integer, ForeignKey("venues.id"), primary_key=True),
-    Column("genre_id", Integer, ForeignKey("genres.id"), primary_key=True),
-)
-
 
 # Database Models
 class Venue(Base):
@@ -152,15 +143,10 @@ class Venue(Base):
     latitude = Column(Float)  # Latitude of the venue
     longitude = Column(Float)  # Longitude of the venue
     wwoz_venue_url = Column(String)
-    genres = relationship(
-        "Genre", secondary=venue_genre_association, back_populates="venues"
-    )
     capacity = Column(Integer)  # Added for festival planning
     indoor = Column(Boolean)  # Added for festival planning
 
-    genres = relationship(
-        "Genre", secondary=venue_genre_association, back_populates="venues"
-    )
+    genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
     artists = relationship("Artist", secondary="venue_artists")
 
@@ -231,14 +217,14 @@ class VenueArtist(Base):
 
 
 class VenueEvent(Base):
-    __tablename__ = "venue_artists"
+    __tablename__ = "venue_events"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
     event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
 
 
 class VenueGenre(Base):
-    __tablename__ = "venue_artists"
+    __tablename__ = "venue_genres"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
     event_id = Column(Integer, ForeignKey("genre.id"), primary_key=True)
@@ -475,20 +461,23 @@ def parse_datetime(date_str: str, time_str: str) -> datetime:
     # Extract the relevant date and time portion
     try:
         # Parse the time string, e.g. "8:00pm"
-        time_part = time_str.strip()
-
+        time_stripped = time_str.strip()
+        time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
+        match = re.search(time_pattern, time_stripped, re.IGNORECASE)
+        # default to 12:00am if no time is found
+        extracted_time = match.group() if match else "12:00am"
         # Combine the date and time into a full string
-        combined_str = f"{date_str} {time_part}"  # e.g., "1-5-2025 8:00pm"
+        combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
 
         # Parse the combined string into a naive datetime
-        naive_datetime = datetime.strptime(combined_str, "%m-%d-%Y %I:%M%p")
+        naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
 
         # Localize to the central timezone
         localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
         return localized_datetime
     except Exception as e:
         raise ValueError(
-            f"Error parsing datetime string: {date_str}  and time {time_str}"
+            f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
         ) from e
 
 
@@ -664,9 +653,10 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     }
     # POST and GET To AWS API Gateway only; reuses the same image
     http_method = event.get("httpMethod", "GET")
-
+    print("running scrappers")
     try:
         if http_method == "POST":
+            print("running scrappers")
             return run_scraper(aws_info, event)
         elif http_method == "GET":
             return read_from_db()
