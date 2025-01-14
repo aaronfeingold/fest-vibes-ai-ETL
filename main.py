@@ -302,9 +302,13 @@ class DatabaseHandler:
                     session.add(venue)
 
                 # Get or create artist
-                artist = session.query(Artist).filter_by(name=event.artist_name).first()
+                artist = (
+                    session.query(Artist)
+                    .filter_by(name=event.artist.artist_name)
+                    .first()
+                )
                 if not artist:
-                    artist = Artist(name=event.artist_name)
+                    artist = Artist(name=event.artist.artist_name)
                     session.add(artist)
 
                 # Create event
@@ -313,6 +317,7 @@ class DatabaseHandler:
                     venue=venue,
                     performance_time=event.performance_time,
                     scrape_date=scrape_date,
+                    wwoz_event_href=event.wwoz_event_href,
                 )
                 session.add(new_event)
 
