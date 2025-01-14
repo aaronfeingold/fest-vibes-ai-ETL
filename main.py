@@ -396,7 +396,7 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str, date_str: str) -> List[Event]:
+def parse_html(html: str, date_str: str) -> List[EventDTO]:
     try:
         soup = BeautifulSoup(html, "html.parser")
         events = []
@@ -430,7 +430,8 @@ def parse_html(html: str, date_str: str) -> List[Event]:
                 calendar_info = row.find("div", class_="calendar-info")
                 if not calendar_info:
                     continue
-
+                # the event link inner text is the artist name, not a link to the artists page though
+                # is the link to more event details ie related acts, which can be link to the artist, but not always
                 wwoz_event_link = calendar_info.find("a")
                 if not wwoz_event_link:
                     continue
@@ -439,7 +440,9 @@ def parse_html(html: str, date_str: str) -> List[Event]:
                 wwoz_event_href = wwoz_event_link["href"]
                 # Extract time
                 time_str = calendar_info.find_all("p")[1].text.strip()
-                performance_time = parse_datetime(time_str) if time_str else None
+                performance_time = (
+                    parse_datetime(date_str, time_str) if time_str else None
+                )
 
                 event = Event(
                     artist=Artist(
@@ -478,9 +481,7 @@ def parse_datetime(date_str: str, time_str: str) -> datetime:
         combined_str = f"{date_str} {time_part}"  # e.g., "1-5-2025 8:00pm"
 
         # Parse the combined string into a naive datetime
-        naive_datetime = datetime.strptime(
-            combined_str, "%m-%d-%Y %I:%M%p"
-        )  # Adjust based on the date format you get
+        naive_datetime = datetime.strptime(combined_str, "%m-%d-%Y %I:%M%p")
 
         # Localize to the central timezone
         localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
