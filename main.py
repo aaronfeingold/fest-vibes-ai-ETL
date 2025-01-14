@@ -255,7 +255,7 @@ class EventDTO:
 
 
 def geocode_address(address: str) -> dict:
-    api_key = "GOOGLE_MAPS_API_KEY"
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     base_url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {"address": address, "key": api_key}
 
