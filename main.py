@@ -271,12 +271,14 @@ class DatabaseHandler:
     def create_tables(self):
         Base.metadata.create_all(self.engine)
 
-    def save_events(self, events: List[EventDTO], scrape_date: date):
+    def save_events(self, events: List[Event], scrape_date: date):
         session = self.Session()
         try:
             for event in events:
                 # Get or create venue
-                venue = session.query(Venue).filter_by(name=event.venue_name).first()
+                venue = (
+                    session.query(Venue).filter_by(name=event.venue.venue_name).first()
+                )
                 if not venue:
                     geolocation = geocode_address(event.venue_location)
                     latitude = geolocation["latitude"]
@@ -382,7 +384,7 @@ def fetch_html(url: str) -> str:
         )
 
 
-def parse_html(html: str, date_str: str) -> List[EventDTO]:
+def parse_html(html: str, date_str: str) -> List[Event]:
     try:
         soup = BeautifulSoup(html, "html.parser")
         events = []
