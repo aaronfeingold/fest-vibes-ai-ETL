@@ -112,6 +112,7 @@ class ErrorType(Enum):
     AWS_ERROR = "AWS_ERROR"
     VALUE_ERROR = "VALUE_ERROR"
     DATABASE_ERROR = "DATABASE_ERROR"
+    GOOGLE_MAPS_API_ERROR = "GOOGLE_MAPS_API_ERROR"
 
 
 class ScrapingError(Exception):
@@ -268,8 +269,10 @@ def geocode_address(address: str) -> dict:
         lng = result["geometry"]["location"]["lng"]
         return {"latitude": lat, "longitude": lng}
     else:
-        raise ValueError(
-            f"Geocoding failed: {data['status']} - {data.get('error_message')}"
+        raise ScrapingError(
+            message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
+            error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
+            status_code=500,
         )
 
 
@@ -418,7 +421,7 @@ def parse_html(html: str, date_str: str) -> List[Event]:
                 panel_title.find("a").text.strip() if panel_title else "Unknown Venue"
             )
             # get wwoz's venue href from the venue name
-            # TODO: use href
+            # TODO: use href to scrape more data
             wwoz_venue_href = panel_title.find("a")["href"]
             # find the panel's body to ensure we are only dealing with the correct rows
             panel_body = panel.find("div", class_="panel-body")
@@ -643,17 +646,13 @@ def read_from_db():
         return {"statusCode": 200, "body": cached_data}
     else:
         # Fallback to Postgres
-        conn = psycopg2.connect(pg_database_url)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM my_table")
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        db_handler = DatabaseHandler()
+        events = db_handler.get_events_in_date_range()
 
         # Cache the data again
-        redis_client.set("latest_data", json.dumps(rows))
+        redis_client.set("latest_data", json.dumps(events))
 
-        return {"statusCode": 200, "body": json.dumps(rows)}
+        return {"statusCode": 200, "body": json.dumps(events)}
 
 
 def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
