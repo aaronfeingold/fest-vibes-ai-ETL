@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import redis
 from botocore.exceptions import ClientError
-from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
 from datetime import datetime, date
@@ -140,7 +139,12 @@ class Venue(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    location = Column(String)
+    full_address = Column(String)
+    phone_number = Column(String)  # For easy contact on mobile frontend
+    website = Column(String)
+    is_active = Column(
+        Boolean, default=True
+    )  # Added for venue status ie: is it still in business?
     # Geolocation fields
     latitude = Column(Float)  # Latitude of the venue
     longitude = Column(Float)  # Longitude of the venue
@@ -393,24 +397,6 @@ class DatabaseHandler:
         return events
 
 
-def generate_url(
-    params: Dict[str, str] = {},
-    base_url: str = SAMPLE_WEBSITE,
-    endpoint: str = SAMPLE_ENDPOINT,
-) -> str:
-    params_str = ""
-    if params:
-        params_str = "&".join([f"?{k}={v}" for k, v in params.items()])
-    try:
-        return f"{base_url}{endpoint}{params_str}"
-    except (TypeError, Exception) as e:
-        raise ScrapingError(
-            message=f"Failed to create URL: {e}",
-            error_type=ErrorType.GENERAL_ERROR,
-            status_code=500,
-        )
-
-
 class DeepScraper:
     def __init__(self):
         self.session = None
@@ -478,7 +464,27 @@ class DeepScraper:
         self.seen_urls.add(wwoz_venue_href)
         html = await self.fetch_page(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
         soup = BeautifulSoup(html, "html.parser")
-        return soup.find("div", class_="VENUE-DATA")
+        content_div = soup.select_one(".content")
+        thoroughfare = content_div.find("div", class_="thoroughfare").text.strip()
+        locality = content_div.find("span", class_="locality").text.strip()
+        state = content_div.find("span", class_="state").text.strip()
+        postal_code = content_div.find("span", class_="postal-code").text.strip()
+        phone_section = content_div.find("span", class_="field-item even")
+        phone_number = phone_section.find("a").text.strip()
+        # find out if business is still active...if it has events then of course it is
+        # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
+        status_div = content_div.find("div", class_="field field-name-field-status")
+        status = status_div.find("span", class_="field-item even").text.strip()
+        is_active = True if status.lower() == "active" else False
+
+        return {
+            "thoroughfare": thoroughfare,
+            "locality": locality,
+            "state": state,
+            "postal_code": postal_code,
+            "phone_number": phone_number,
+            "is_active": is_active,
+        }
 
     async def get_artist_details(self, wwoz_event_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
@@ -572,6 +578,24 @@ class DeepScraper:
             )
 
 
+def generate_url(
+    params: Dict[str, str] = {},
+    base_url: str = SAMPLE_WEBSITE,
+    endpoint: str = SAMPLE_ENDPOINT,
+) -> str:
+    params_str = ""
+    if params:
+        params_str = "&".join([f"?{k}={v}" for k, v in params.items()])
+    try:
+        return f"{base_url}{endpoint}{params_str}"
+    except (TypeError, Exception) as e:
+        raise ScrapingError(
+            message=f"Failed to create URL: {e}",
+            error_type=ErrorType.GENERAL_ERROR,
+            status_code=500,
+        )
+
+
 def generate_date_str() -> str:
     try:
         date_param = datetime.now(NEW_ORLEANS_TZ).date()
@@ -591,7 +615,7 @@ def generate_date_str() -> str:
         )
 
 
-def create_response(status_code: int, body: ResponseBody) -> ResponseType:
+def generate_response(status_code: int, body: ResponseBody) -> ResponseType:
     if isinstance(body.get("error", {}).get("type"), ErrorType):
         body["error"]["type"] = body["error"]["type"].value
 
@@ -645,7 +669,7 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
         scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
         db_service.save_events(events, scrape_date)
 
-        return create_response(
+        return generate_response(
             200,
             {
                 "status": "success",
@@ -656,7 +680,7 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
         )
     except ScrapingError as e:
         logger.error(f"Scraping error: {e.error_type} - {e.message}")
-        return create_response(
+        return generate_response(
             e.status_code,
             {
                 "status": "error",
@@ -674,7 +698,7 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
             status_code=e.code,
         )
         logger.error(f"HTTP error: {error.message}")
-        return create_response(
+        return generate_response(
             error.status_code,
             {
                 "status": "error",
@@ -689,7 +713,7 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
         error_message = e.response["Error"]["Message"]
         error_code = e.response["Error"]["Code"]
         logger.error(f"AWS ClientError: {error_code} - {error_message}")
-        return create_response(
+        return generate_response(
             500,
             {
                 "status": "error",
@@ -702,7 +726,7 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
         )
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        return create_response(
+        return generate_response(
             500,
             {
                 "status": "error",
@@ -751,7 +775,7 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
         elif http_method == "GET":
             return read_from_db()
         else:
-            return create_response(
+            return generate_response(
                 400,
                 {
                     "status": "error",
@@ -759,4 +783,4 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
                 },
             )
     except Exception as e:
-        return create_response(500, {"status": "error", "error": str(e)})
+        return generate_response(500, {"status": "error", "error": str(e)})
