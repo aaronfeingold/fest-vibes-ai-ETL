@@ -142,7 +142,7 @@ class Venue(Base):
     # Geolocation fields
     latitude = Column(Float)  # Latitude of the venue
     longitude = Column(Float)  # Longitude of the venue
-    wwoz_venue_url = Column(String)
+    wwoz_venue_href = Column(String)
     capacity = Column(Integer)  # Added for festival planning
     indoor = Column(Boolean)  # Added for festival planning
 
@@ -152,7 +152,7 @@ class Venue(Base):
 
     @hybrid_property
     def full_url(self):
-        return urljoin(SAMPLE_WEBSITE, self.href)
+        return urljoin(SAMPLE_WEBSITE, self.wwoz_venue_href)
 
 
 class Artist(Base):
@@ -183,7 +183,7 @@ class Event(Base):
     end_time = Column(DateTime(timezone=True))  # Added for Gantt charts
     scrape_date = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-    wwoz_event_url = Column(String)
+    wwoz_event_href = Column(String)
     is_recurring = Column(Boolean, default=False)  # Added for recurring events
     recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
     is_indoors = Column(Boolean)  # Added for Gantt planning
@@ -192,7 +192,7 @@ class Event(Base):
 
     @hybrid_property
     def full_url(self):
-        return urljoin(SAMPLE_WEBSITE, self.href)
+        return urljoin(SAMPLE_WEBSITE, self.wwoz_event_href)
 
 
 class Genre(Base):
@@ -200,6 +200,8 @@ class Genre(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
+
+    venues = relationship("Venue", secondary="venue_genres", back_populates="genres")
 
 
 class ArtistRelation(Base):
@@ -227,7 +229,14 @@ class VenueGenre(Base):
     __tablename__ = "venue_genres"
 
     venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
-    genre_id = Column(Integer, ForeignKey("genre.id"), primary_key=True)
+    genre_id = Column(Integer, ForeignKey("genres.id"), primary_key=True)
+
+
+class ArtistGenre(Base):
+    __tablename__ = "artist_genres"
+
+    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+    genre_id = Column(Integer, ForeignKey("genres.id"), primary_key=True)
 
 
 # Data Transfer Objects
@@ -321,7 +330,7 @@ class DatabaseHandler:
 
     def get_events_in_date_range(
         session: Session, start_date: datetime, end_date: datetime
-    ):
+    ) -> List[Event]:
         """
         Retrieve all events occurring in a specific range of dates.
         :param session: SQLAlchemy session
