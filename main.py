@@ -16,6 +16,7 @@ from enum import Enum
 from dataclasses import dataclass
 from sqlalchemy import (
     create_engine,
+    Boolean,
     Column,
     Integer,
     String,
@@ -25,6 +26,7 @@ from sqlalchemy import (
     ForeignKey,
     Table,
     Float,
+    Interval,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -152,6 +154,12 @@ class Venue(Base):
     genres = relationship(
         "Genre", secondary=venue_genre_association, back_populates="venues"
     )
+    capacity = Column(Integer)  # Added for festival planning
+    indoor = Column(Boolean)  # Added for festival planning
+
+    genres = relationship(
+        "Genre", secondary=venue_genre_association, back_populates="venues"
+    )
     events = relationship("Event", back_populates="venue")
     artists = relationship("Artist", secondary="venue_artists")
 
@@ -166,6 +174,8 @@ class Artist(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     genres = Column(ARRAY(String))
+    popularity_score = Column(Float)  # Added for festival planning
+    typical_set_length = Column(Interval)  # Added for scheduling
     events = relationship("Event", back_populates="artist")
     venues = relationship("Venue", secondary="venue_artists")
     related_artists = relationship(
@@ -183,9 +193,13 @@ class Event(Base):
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
     performance_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True))  # Added for Gantt charts
     scrape_date = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     wwoz_event_url = Column(String)
+    is_recurring = Column(Boolean, default=False)  # Added for recurring events
+    recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
+    is_indoors = Column(Boolean)  # Added for Gantt planning
     artist = relationship("Artist", back_populates="events")
     venue = relationship("Venue", back_populates="events")
 
@@ -222,6 +236,13 @@ class VenueEvent(Base):
     event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
 
 
+class VenueGenre(Base):
+    __tablename__ = "venue_artists"
+
+    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
+    event_id = Column(Integer, ForeignKey("genre.id"), primary_key=True)
+
+
 # Data Transfer Objects
 @dataclass
 class EventDTO:
@@ -234,7 +255,7 @@ class EventDTO:
 
 
 def geocode_address(address: str) -> dict:
-    api_key = "GOOGLE_MAPS_API_KEY"  # Replace with your actual API key
+    api_key = "GOOGLE_MAPS_API_KEY"
     base_url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {"address": address, "key": api_key}
 
@@ -329,7 +350,7 @@ class DatabaseHandler:
         return events
 
 
-def get_url(
+def generate_url(
     params: Dict[str, str] = {},
     base_url: str = SAMPLE_WEBSITE,
     endpoint: str = SAMPLE_ENDPOINT,
@@ -397,8 +418,9 @@ def parse_html(html: str, date_str: str) -> List[Event]:
                 panel_title.find("a").text.strip() if panel_title else "Unknown Venue"
             )
             # get wwoz's venue href from the venue name
+            # TODO: use href
             wwoz_venue_href = panel_title.find("a")["href"]
-            # find the body to ensure we are only dealing with the correct rows
+            # find the panel's body to ensure we are only dealing with the correct rows
             panel_body = panel.find("div", class_="panel-body")
 
             for row in panel_body.find_all("div", class_="row"):
@@ -519,7 +541,7 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
 
 def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
     try:
-        html = fetch_html(get_url(params))
+        html = fetch_html(generate_url(params))
         return parse_html(html, params["date"])
     except ScrapingError:
         raise
