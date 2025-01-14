@@ -206,7 +206,7 @@ class Genre(Base):
         "Artist", secondary="artist_genres", back_populates="artists"
     )
 
-
+# Join Tables
 class ArtistRelation(Base):
     __tablename__ = "artist_relations"
 
@@ -238,8 +238,12 @@ class VenueGenre(Base):
 class ArtistGenre(Base):
     __tablename__ = "artist_genres"
 
-    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
-    genre_id = Column(Integer, ForeignKey("genres.id"), primary_key=True)
+    artist_id = Column(
+        Integer, ForeignKey("artists.id", ondelete="CASCADE"), primary_key=True
+    )
+    genre_id = Column(
+        Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # Data Transfer Objects
