@@ -139,8 +139,12 @@ class Venue(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    full_address = Column(String)
     phone_number = Column(String)  # For easy contact on mobile frontend
+    thoroughfare = Column(String)
+    locality = Column(String)
+    state = Column(String)
+    postal_code = Column(String)
+    full_address = Column(String)
     website = Column(String)
     is_active = Column(
         Boolean, default=True
@@ -150,7 +154,9 @@ class Venue(Base):
     longitude = Column(Float)  # Longitude of the venue
     wwoz_venue_href = Column(String)
     capacity = Column(Integer)  # Added for festival planning; attr not yet available
-    indoor = Column(Boolean)  # Added for festival planning; attr not yet available
+    is_indoor = Column(
+        Boolean, default=True
+    )  # Added for festival planning; attr not yet available
 
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
@@ -475,15 +481,20 @@ class DeepScraper:
         # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
         status_div = content_div.find("div", class_="field field-name-field-status")
         status = status_div.find("span", class_="field-item even").text.strip()
+        website_div = content_div.find("div", class_="field field-name-field-url")
+        website_link = website_div.find("span", class_="field-item even")
+        website = website_link.find("a")["href"] if website_link else None
         is_active = True if status.lower() == "active" else False
 
         return {
+            "phone_number": phone_number,
             "thoroughfare": thoroughfare,
             "locality": locality,
             "state": state,
             "postal_code": postal_code,
-            "phone_number": phone_number,
+            "full_address": f"{thoroughfare}, {locality}, {state} {postal_code}",
             "is_active": is_active,
+            "website": website,
         }
 
     async def get_artist_details(self, wwoz_event_href: str, artist_name: str) -> dict:
@@ -559,6 +570,13 @@ class DeepScraper:
                         venue=Venue(
                             name=venue_name,
                             wwoz_venue_href=wwoz_venue_href,
+                            thoroughfare=venue_data.thoroughfare,
+                            locality=venue_data.locality,
+                            state=venue_data.state,
+                            postal_code=venue_data.postal_code,
+                            phone_number=venue_data.phone_number,
+                            is_active=venue_data.is_active,
+                            website=venue_data.website,
                             genres=[],  # To be populated later
                         ),
                         wwoz_event_href=wwoz_event_href,
