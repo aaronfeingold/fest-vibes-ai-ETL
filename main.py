@@ -518,29 +518,6 @@ class DeepScraper:
                 status_code=500,
             )
 
-    def parse_datetime(date_str: str, time_str: str) -> datetime:
-        # Extract the relevant date and time portion
-        try:
-            # Parse the time string, e.g. "8:00pm"
-            time_stripped = time_str.strip()
-            time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
-            match = re.search(time_pattern, time_stripped, re.IGNORECASE)
-            # default to 12:00am if no time is found
-            extracted_time = match.group() if match else "12:00am"
-            # Combine the date and time into a full string
-            combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
-
-            # Parse the combined string into a naive datetime
-            naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
-
-            # Localize to the central timezone
-            localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
-            return localized_datetime
-        except Exception as e:
-            raise ValueError(
-                f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
-            ) from e
-
     async def get_venue_details(
         self, wwoz_venue_href: str, event_artist_name: str
     ) -> dict:
@@ -820,11 +797,11 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
     return {**query_string_params, "date": date_param}
 
 
-def scrape(params: Dict[str, str]) -> List[EventDTO]:
+async def scrape(params: Dict[str, str]) -> List[EventDTO]:
     deep_scraper = DeepScraper()
     try:
-        html = deep_scraper.fetch_html(generate_url(params))
-        return deep_scraper.parse_html(html, params["date"])
+        html = await deep_scraper.fetch_html(generate_url(params))
+        return await deep_scraper.parse_html(html, params["date"])
     except ScrapingError:
         raise
     except Exception as e:
