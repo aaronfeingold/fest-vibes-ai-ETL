@@ -10,7 +10,7 @@ from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin
 from datetime import datetime, date
 import pytz
-from typing import Dict, Any, List, TypedDict, Union, Optional
+from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
 from dataclasses import dataclass
 from sqlalchemy import (
@@ -195,20 +195,25 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True)
     wwoz_event_href = Column(String)
-    description = Column(String)  # TODO: Use OPENAI to infer other attrs. Added for event details if any; may have price, age, etc
+    # Added for event details if any; may have price, age, etc
+    description = Column(String)  # TODO: Use OPENAI to infer other attrs.
     # SQL Alchemy will set the IDS from the relational fields
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
     artist_name = Column(String)
     venue_name = Column(String)
     performance_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True))  # TODO: SEE IF OPENAI CAN INFER THIS FROM DESCRIPTIONS; Added for Gantt charts
+    # Added for Gantt charts
+    end_time = Column(
+        DateTime(timezone=True)
+    )  # TODO: SEE IF OPENAI CAN INFER THIS FROM DESCRIPTIONS
     scrape_date = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     # TODO: SCRAPE THESE ATTRS FROM EVENT DETAILS, OR USE OPENAI TO INFER RECURRENCE
     is_recurring = Column(Boolean, default=False)  # Added for recurring events
     recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
-    # All are indoors unless the venue states otherwise. Example: Bacchanal (OUTDOORS) https://www.wwoz.org/organizations/bacchanal-outdoors
+    # All are indoors unless the venue states otherwise.
+    # Example: Bacchanal (OUTDOORS) https://www.wwoz.org/organizations/bacchanal-outdoors
     is_indoors = Column(Boolean)  # Added for Gantt planning
     # relational fields
     artist = relationship("Artist", back_populates="events")
@@ -301,6 +306,7 @@ class ArtistGenre(Base):
         Index("ix_artist_genre_genre_id", genre_id),
     )
 
+
 class EventGenre(Base):
     __tablename__ = "event_genres"
 
@@ -333,6 +339,7 @@ class VenueData:
     wwoz_venue_href: str
     event_artist: str
 
+
 @dataclass
 class ArtistData:
     name: str
@@ -349,6 +356,7 @@ class EventData:
     description: str
     related_artists: List[str]
     genres: List[str]
+
 
 @dataclass
 class EventDTO:
@@ -430,7 +438,7 @@ class DatabaseHandler:
                     .filter_by(name=event.artist_data.name)
                     .first()
                 )
-                if not artist: # and some data is available
+                if not artist:  # and some data is available
                     artist = Artist(name=event.artist_data.name, genres=genre_objects)
                     session.add(artist)
 
@@ -501,6 +509,7 @@ class DeepScraper:
         if not self.session:
             self.session = aiohttp.ClientSession()
         try:
+            print(f"url: {url}")
             async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
                 if response.status != 200:
                     raise ScrapingError(
@@ -832,16 +841,16 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
     return {**query_string_params, "date": date_param}
 
 
-def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
+async def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
     try:
         # validate the parameters
         params = validate_params(event.get("queryStringParameters", {}))
         deep_scraper = DeepScraper()
-        events = deep_scraper.run(params)
+        events = await deep_scraper.run(params)
         # Save to database
         scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
         db_service = DatabaseHandler()
-        db_service.save_events(events, scrape_date)
+        await db_service.save_events(events, scrape_date)
 
         # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
         # for now, just return the List of EventDTOs
@@ -940,7 +949,7 @@ def get_events(use_redis: bool = False) -> ResponseType:
         return {"statusCode": 200, "body": json.dumps(events)}
 
 
-def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
+async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
     # record the AWS request ID and log stream name for all responses...
     aws_info = {
         "aws_request_id": context.aws_request_id,
@@ -950,7 +959,7 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     http_method = event.get("httpMethod", "GET")
     try:
         if http_method == "POST":
-            return create_events(aws_info, event)
+            return await create_events(aws_info, event)
         elif http_method == "GET":
             return get_events()
         else:
