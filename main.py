@@ -30,7 +30,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import sessionmaker, relationship, Session
 import requests
-import asyncio
 import aiohttp
 
 load_dotenv()  # Load variables from .env
@@ -193,6 +192,8 @@ class Event(Base):
     id = Column(Integer, primary_key=True)
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
+    artist_name = Column(String)  # Added for Gantt charts
+    venue_name = Column(String)  # Added for Gantt charts
     performance_time = Column(DateTime(timezone=True), nullable=False)
     end_time = Column(DateTime(timezone=True))  # Added for Gantt charts
     scrape_date = Column(Date, nullable=False)
@@ -333,7 +334,7 @@ class DatabaseHandler:
     def create_tables(self):
         Base.metadata.create_all(self.engine)
 
-    def save_events(self, events: List[Event], scrape_date: date):
+    def save_events(self, events: List[EventDTO], scrape_date: date):
         session = self.Session()
         try:
             for event in events:
@@ -465,7 +466,9 @@ class DeepScraper:
                 f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
             ) from e
 
-    async def get_venue_details(self, wwoz_venue_href: str) -> dict:
+    async def get_venue_details(
+        self, wwoz_venue_href: str, event_artist_name: str
+    ) -> dict:
         """Deep crawl venue page to get additional details"""
         if wwoz_venue_href in self.seen_urls:
             return {}
@@ -500,6 +503,8 @@ class DeepScraper:
             "full_address": f"{thoroughfare}, {locality}, {state} {postal_code}",
             "is_active": is_active,
             "website": website,
+            "wwoz_venue_href": wwoz_venue_href,
+            "event_artist": event_artist_name,
         }
 
     async def get_artist_details(self, wwoz_artist_href: str) -> dict:
@@ -512,9 +517,26 @@ class DeepScraper:
         soup = BeautifulSoup(html, "html.parser")
         content_div = soup.select_one(".content")
         genres_div = content_div.find("div", class_="field field-name-field-genres")
+        # hopefully the artist has some genres listed...otherwise we just get some description,
+        # related acts (not always, and no need for deep crawl), and move along
         genres = [genre.text.strip() for genre in genres_div.find_all("a")]
+        print(f"Event Artist Genres: {genres}")
+
+        related_artists_div = content_div.find(
+            "div", class_="field field-name-field-related-acts"
+        )
+        related_artists_list = related_artists_div.find(
+            "span", _class="textformatter-list"
+        )
+        related_artists = [
+            related_artist.text.strip()
+            for related_artist in related_artists_list.find_all("a")
+        ]
+
         return {
+            "description": "lorum ipsum",
             "genres": genres,
+            "related_artists": related_artists,
         }
 
     async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
@@ -522,15 +544,22 @@ class DeepScraper:
         if wwoz_event_href in self.seen_urls:
             return {}
 
+        # TODO: CLEAN UP EXCESS VARS
         self.seen_urls.add(wwoz_event_href)
         html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
         soup = BeautifulSoup(html, "html.parser")
-        event_data = soup.find("div", class_="content")
-        description_div = event_data.find("div", class_="field field-name-body")
+        event_div = soup.find("div", class_="content")
+        description_div = event_div.find("div", class_="field field-name-body")
         description_field = description_div.find("div", class_="field-item even")
         description = description_field.find("p", class_="field-item even").text.strip()
-        # TODO: CLEAN UP EXCESS VARS
-        related_artists_div = event_data.find(
+        # create the event data object
+        event_data = {
+            "event_artist": artist_name,
+            "description": description,
+        }
+        # TODO: USE OPENAI API TO EXTRACT EVENT DETAILS FROM DESCRIPTION
+        # IE 21+, Ticket Price, other websites (ticket, bands, event, etc)
+        related_artists_div = event_div.find(
             "div", class_="field field-name-field-related-acts"
         )
         # find the artist name in the related artist links if links exist
@@ -540,7 +569,6 @@ class DeepScraper:
         related_artists = []
         # TODO: if artist not in DB, add them
         # now, we have no DB so whatever
-        event_artist = Artist(name=artist_name)
         # add all other artists in list that do match the artist as 'related artists'
         for link in related_artists_list.find_all("a"):
             if link.text.strip() != artist_name:
@@ -548,13 +576,25 @@ class DeepScraper:
                     Artist(name=link.text.strip(), wwoz_artist_href=link["href"])
                 )
             else:
-                event_artist.wwoz_artist_href = wwoz_artist_href = link["href"]
+                # sometimes the artist name of the event artist has no link
+                # if it does, let's grab some more info, whatever there is, hopefully some genres
+                event_data.wwoz_artist_href = link["href"]
+
+        event_data.related_artists = related_artists
+        if event_data.wwoz_artist_href:
+            artist_data = await self.get_artist_details(event_data.wwoz_artist_href)
+
+        # for now, let's just get the genres of the event artist if we have this info scraped
+        # and give the event some genres for people to search by
+        if artist_data:
+            event_data.genres = artist_data["genres"]
 
         return {
-            "description": description,
+            "event_data": event_data,
+            "artist_data": artist_data,
         }
 
-    async def parse_html(self, html: str, date_str: str) -> List[Event]:
+    async def parse_html(self, html: str, date_str: str) -> List[EventDTO]:
         try:
             soup = BeautifulSoup(html, "html.parser")
             events = []
@@ -582,7 +622,8 @@ class DeepScraper:
                 )
                 # get wwoz's venue href from the venue name
                 wwoz_venue_href = panel_title.find("a")["href"]
-                venue_data = await self.get_venue_details(wwoz_venue_href)
+                # use href to get details, and return the oringal href in the venue data
+                venue_data = await self.get_venue_details(wwoz_venue_href, venue_name)
                 # find the panel's body to ensure we are only dealing with the correct rows
                 panel_body = panel.find("div", class_="panel-body")
 
@@ -596,32 +637,22 @@ class DeepScraper:
                     if not wwoz_event_link:
                         continue
                     # get artist name and wwoz event href
-                    artist_name = wwoz_event_link.text.strip()
+                    event_artist_name = wwoz_event_link.text.strip()
                     wwoz_event_href = wwoz_event_link["href"]
-                    # Extract time
-                    artist_data = await self.get_artist_details(wwoz_event_href)
+                    artist_data, event_data = await self.get_event_details(
+                        wwoz_event_href, event_artist_name
+                    )
+                    # Extract time string
                     time_str = calendar_info.find_all("p")[1].text.strip()
+                    # the performance time had ought to be known
                     performance_time = (
                         self.parse_datetime(date_str, time_str) if time_str else None
                     )
 
-                    event = Event(
-                        artist=Artist(
-                            name=artist_name,
-                            genres=[],  # To be populated later
-                        ),
-                        venue=Venue(
-                            name=venue_name,
-                            wwoz_venue_href=wwoz_venue_href,
-                            thoroughfare=venue_data.thoroughfare,
-                            locality=venue_data.locality,
-                            state=venue_data.state,
-                            postal_code=venue_data.postal_code,
-                            phone_number=venue_data.phone_number,
-                            is_active=venue_data.is_active,
-                            website=venue_data.website,
-                            genres=[],  # To be populated later
-                        ),
+                    event = EventDTO(
+                        artist_data=artist_data,
+                        venue_data=venue_data,
+                        event_data=event_data,
                         wwoz_event_href=wwoz_event_href,
                         performance_time=performance_time,
                         scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
