@@ -144,6 +144,7 @@ class Venue(Base):
     state = Column(String)
     postal_code = Column(String)
     full_address = Column(String)
+    wwoz_venue_href = Column(String)
     website = Column(String)
     is_active = Column(
         Boolean, default=True
@@ -151,13 +152,13 @@ class Venue(Base):
     # Geolocation fields
     latitude = Column(Float)  # Latitude of the venue
     longitude = Column(Float)  # Longitude of the venue
-    wwoz_venue_href = Column(String)
+    # TODO: OPENAI CAN HANDLE THIS INFO POTENTIALLY; Added for festival planning; attrs not yet available
     capacity = Column(Integer)  # Added for festival planning; attr not yet available
     is_indoor = Column(
         Boolean, default=True
     )  # Added for festival planning; attr not yet available
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-
+    # relational fields
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
     artists = relationship("Artist", secondary="venue_artists", back_populates="venues")
@@ -172,12 +173,15 @@ class Artist(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    wwoz_artist_href = Column(String)
+    description = Column(String)  # TODO: USE OPENAI TO SUMMARIZE? -> Added for potential
+    # Experimental fields
     popularity_score = Column(Float)  # Added for festival planning
     typical_set_length = Column(Interval)  # Added for scheduling
+    # relational fields
     events = relationship("Event", back_populates="artist")
     venues = relationship("Venue", secondary="venue_artists", back_populates="artists")
     genres = relationship("Genre", secondary="artist_genres", back_populates="artists")
-    wwoz_artist_href = Column(String)
     related_artists = relationship(
         "Artist",
         secondary="artist_relations",
@@ -190,21 +194,26 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True)
+    wwoz_event_href = Column(String)
+    description = Column(String)  # TODO: Use OPENAI to infer other attrs. Added for event details if any; may have price, age, etc
+    # SQL Alchemy will set the IDS from the relational fields
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
     artist_name = Column(String)  # Added for Gantt charts
     venue_name = Column(String)  # Added for Gantt charts
     performance_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True))  # Added for Gantt charts
+    end_time = Column(DateTime(timezone=True))  # TODO: SEE IF OPENAI CAN INFER THIS FROM DESCRIPTIONS; Added for Gantt charts
     scrape_date = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-    wwoz_event_href = Column(String)
+    # TODO: SCRAPE THESE ATTRS FROM EVENT DETAILS, OR USE OPENAI TO INFER RECURRENCE
     is_recurring = Column(Boolean, default=False)  # Added for recurring events
     recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
+    # All are indoors unless the venue states otherwise. Example: Bacchanal (OUTDOORS) https://www.wwoz.org/organizations/bacchanal-outdoors
     is_indoors = Column(Boolean)  # Added for Gantt planning
-    description = Column(String)  # Added for event details if any
+    # relational fields
     artist = relationship("Artist", back_populates="events")
     venue = relationship("Venue", back_populates="events")
+    genres = relationship("Genre", secondary="event_genres", back_populates="events")
 
     @hybrid_property
     def full_url(self):
@@ -292,16 +301,62 @@ class ArtistGenre(Base):
         Index("ix_artist_genre_genre_id", genre_id),
     )
 
+class EventGenre(Base):
+    __tablename__ = "event_genres"
+
+    event_id = Column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    genre_id = Column(
+        Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # Add indexes
+    __table_args__ = (
+        Index("ix_event_genre_event_id", event_id),
+        Index("ix_event_genre_genre_id", genre_id),
+    )
+
 
 # Data Transfer Objects
 @dataclass
+class VenueData:
+    name: str
+    thoroughfare: str
+    phone_number: str
+    locality: str
+    state: str
+    postal_code: str
+    full_address: str
+    is_active: str
+    website: str
+    wwoz_venue_href: str
+    event_artist: str
+
+@dataclass
+class ArtistData:
+    name: str
+    description: str
+    genres: List[str]
+    related_artists: List[str]
+    wwoz_artist_href: str
+
+
+@dataclass
+class EventData:
+    wwoz_event_href: str
+    event_artist: str
+    description: str
+    related_artists: List[str]
+    genres: List[str]
+
+@dataclass
 class EventDTO:
-    artist_name: str
-    venue_name: str
-    venue_location: str
+    artist_data: ArtistData
+    venue_data: VenueData
+    event_data: EventData
     performance_time: datetime
-    artist_url: str
-    venue_url: Optional[str] = None
+    scrape_date: date
 
 
 def geocode_address(address: str) -> dict:
@@ -334,42 +389,62 @@ class DatabaseHandler:
     def create_tables(self):
         Base.metadata.create_all(self.engine)
 
+    def get_or_create_genre(self, session, name):
+        genre = session.query(Genre).filter_by(name=name).first()
+        if not genre:
+            genre = Genre(name=name)
+            session.add(genre)
+        return genre
+
     def save_events(self, events: List[EventDTO], scrape_date: date):
         session = self.Session()
         try:
             for event in events:
+                genre_objects = [self.get_or_create_genre(session, genre_name)for genre_name in event.event_data.genres]
                 # Get or create venue
-                venue = session.query(Venue).filter_by(name=event.venue.name).first()
+                venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
                 if not venue:
-                    geolocation = geocode_address(event.venue_location)
+                    geolocation = geocode_address(event.venue_data.full_address)
                     latitude = geolocation["latitude"]
                     longitude = geolocation["longitude"]
                     venue = Venue(
-                        name=event.venue_name,
-                        location=event.venue_location,
-                        wwoz_venue_url=event.venue_url,
+                        name=event.venue_data.name,
+                        phone_number=event.venue_data.phone_number,
+                        thoroughfare=event.venue_data.thoroughfare,
+                        locality=event.venue_data.locality,
+                        state=event.venue_data.state,
+                        postal_code=event.venue_data.postal_code,
+                        full_address=event.venue_data.full_address,
+                        wwoz_venue_url=event.venue_data.wwoz_venue_href,
+                        website=event.venue_data.website,
+                        is_active=event.venue_data.is_active,
                         latitude=latitude,
                         longitude=longitude,
+                        genres=genre_objects,
                     )
                     session.add(venue)
 
                 # Get or create artist
                 artist = (
                     session.query(Artist)
-                    .filter_by(name=event.artist.artist_name)
+                    .filter_by(name=event.artist_data.name)
                     .first()
                 )
-                if not artist:
-                    artist = Artist(name=event.artist.artist_name)
+                if not artist: # and some data is available
+                    artist = Artist(name=event.artist_data.name, genres=genre_objects)
                     session.add(artist)
 
                 # Create event
                 new_event = Event(
-                    artist=artist,
-                    venue=venue,
+                    wwoz_event_href=event.event_data.wwoz_event_href,
+                    description=event.event_data.description,
+                    artist_name=event.artist_data.name,
+                    venue_name=event.venue_data.name,
                     performance_time=event.performance_time,
                     scrape_date=scrape_date,
-                    wwoz_event_href=event.wwoz_event_href,
+                    artist=artist,
+                    venue=venue,
+                    genres=genre_objects,
                 )
                 session.add(new_event)
 
@@ -530,13 +605,14 @@ class DeepScraper:
         )
         related_artists = [
             related_artist.text.strip()
-            for related_artist in related_artists_list.find_all("a")
+            for related_artist in related_artists_list.find_all("a")``
         ]
 
         return {
             "description": "lorum ipsum",
             "genres": genres,
             "related_artists": related_artists,
+            "wwoz_artist_href": wwoz_artist_href,
         }
 
     async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
@@ -553,7 +629,9 @@ class DeepScraper:
         description_field = description_div.find("div", class_="field-item even")
         description = description_field.find("p", class_="field-item even").text.strip()
         # create the event data object
+        # more attrs will be added as we scrape more data
         event_data = {
+            "wwoz_event_href": wwoz_event_href,
             "event_artist": artist_name,
             "description": description,
         }
@@ -614,7 +692,7 @@ class DeepScraper:
                 # Extract venue info
                 if not panel_title:
                     logger.warning("Panel is missing Venue Name...This is unexpected.")
-                # strip text to get venue name
+                # parse text to get venue name
                 venue_name = (
                     panel_title.find("a").text.strip()
                     if panel_title
@@ -623,6 +701,9 @@ class DeepScraper:
                 # get wwoz's venue href from the venue name
                 wwoz_venue_href = panel_title.find("a")["href"]
                 # use href to get details, and return the oringal href in the venue data
+                # TODO: If venue not in DB, get info about it
+                # TODO: else if last updated over 1 month, get updated info
+                # TODO: for now, just get the venue details to protoype
                 venue_data = await self.get_venue_details(wwoz_venue_href, venue_name)
                 # find the panel's body to ensure we are only dealing with the correct rows
                 panel_body = panel.find("div", class_="panel-body")
@@ -639,6 +720,7 @@ class DeepScraper:
                     # get artist name and wwoz event href
                     event_artist_name = wwoz_event_link.text.strip()
                     wwoz_event_href = wwoz_event_link["href"]
+                    # use the href to for the event to scrape deeper for more details on artists, and return any
                     artist_data, event_data = await self.get_event_details(
                         wwoz_event_href, event_artist_name
                     )
@@ -653,7 +735,6 @@ class DeepScraper:
                         artist_data=artist_data,
                         venue_data=venue_data,
                         event_data=event_data,
-                        wwoz_event_href=wwoz_event_href,
                         performance_time=performance_time,
                         scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
                     )
@@ -739,7 +820,7 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
     return {**query_string_params, "date": date_param}
 
 
-def scrape(params: Dict[str, str]) -> list | List[Dict[str, str]]:
+def scrape(params: Dict[str, str]) -> List[EventDTO]:
     deep_scraper = DeepScraper()
     try:
         html = deep_scraper.fetch_html(generate_url(params))
