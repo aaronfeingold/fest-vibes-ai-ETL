@@ -1,4 +1,5 @@
 import json
+import asyncio
 from main import lambda_handler
 
 
@@ -21,6 +22,12 @@ event = {
     "httpMethod": "POST",
 }
 
+
 # Invoke the handler and print the result
-result = lambda_handler(event, LambdaTestContext())
-print(json.dumps(result, indent=4))
+async def test_lambda_handler():
+    result = await lambda_handler(event, LambdaTestContext())
+    print(json.dumps(result, indent=4))
+
+
+if __name__ == "__main__":
+    asyncio.run(test_lambda_handler())
