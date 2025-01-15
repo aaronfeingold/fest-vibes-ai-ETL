@@ -199,8 +199,8 @@ class Event(Base):
     # SQL Alchemy will set the IDS from the relational fields
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
-    artist_name = Column(String)  # Added for Gantt charts
-    venue_name = Column(String)  # Added for Gantt charts
+    artist_name = Column(String)
+    venue_name = Column(String)
     performance_time = Column(DateTime(timezone=True), nullable=False)
     end_time = Column(DateTime(timezone=True))  # TODO: SEE IF OPENAI CAN INFER THIS FROM DESCRIPTIONS; Added for Gantt charts
     scrape_date = Column(Date, nullable=False)
@@ -605,7 +605,7 @@ class DeepScraper:
         )
         related_artists = [
             related_artist.text.strip()
-            for related_artist in related_artists_list.find_all("a")``
+            for related_artist in related_artists_list.find_all("a")
         ]
 
         return {
