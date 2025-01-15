@@ -157,6 +157,7 @@ class Venue(Base):
     is_indoor = Column(
         Boolean, default=True
     )  # Added for festival planning; attr not yet available
+    last_updated = Column(DateTime(timezone=True), server_default="now()")
 
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
@@ -177,6 +178,7 @@ class Artist(Base):
     events = relationship("Event", back_populates="artist")
     venues = relationship("Venue", secondary="venue_artists", back_populates="artists")
     genres = relationship("Genre", secondary="artist_genres", back_populates="artists")
+    wwoz_artist_href = Column(String)
     related_artists = relationship(
         "Artist",
         secondary="artist_relations",
@@ -199,6 +201,7 @@ class Event(Base):
     is_recurring = Column(Boolean, default=False)  # Added for recurring events
     recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
     is_indoors = Column(Boolean)  # Added for Gantt planning
+    description = Column(String)  # Added for event details if any
     artist = relationship("Artist", back_populates="events")
     venue = relationship("Venue", back_populates="events")
 
@@ -468,21 +471,23 @@ class DeepScraper:
             return {}
 
         self.seen_urls.add(wwoz_venue_href)
-        html = await self.fetch_page(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
+        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
         soup = BeautifulSoup(html, "html.parser")
         content_div = soup.select_one(".content")
         thoroughfare = content_div.find("div", class_="thoroughfare").text.strip()
         locality = content_div.find("span", class_="locality").text.strip()
         state = content_div.find("span", class_="state").text.strip()
         postal_code = content_div.find("span", class_="postal-code").text.strip()
-        phone_section = content_div.find("span", class_="field-item even")
+        phone_section = content_div.find("div", class_="field field-name-field-phone")
         phone_number = phone_section.find("a").text.strip()
         # find out if business is still active...if it has events then of course it is
         # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
-        status_div = content_div.find("div", class_="field field-name-field-status")
-        status = status_div.find("span", class_="field-item even").text.strip()
+        status_div = content_div.find(
+            "div", class_="field field-name-field-organization-status"
+        )
+        status = status_div.find("div", class_="field-item even").text.strip()
         website_div = content_div.find("div", class_="field field-name-field-url")
-        website_link = website_div.find("span", class_="field-item even")
+        website_link = website_div.find("div", class_="field-item even")
         website = website_link.find("a")["href"] if website_link else None
         is_active = True if status.lower() == "active" else False
 
@@ -497,19 +502,57 @@ class DeepScraper:
             "website": website,
         }
 
-    async def get_artist_details(self, wwoz_event_href: str, artist_name: str) -> dict:
+    async def get_artist_details(self, wwoz_artist_href: str) -> dict:
+        """Deep crawl venue page to get additional details"""
+        if wwoz_artist_href in self.seen_urls:
+            return {}
+
+        self.seen_urls.add(wwoz_artist_href)
+        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_artist_href))
+        soup = BeautifulSoup(html, "html.parser")
+        content_div = soup.select_one(".content")
+        genres_div = content_div.find("div", class_="field field-name-field-genres")
+        genres = [genre.text.strip() for genre in genres_div.find_all("a")]
+        return {
+            "genres": genres,
+        }
+
+    async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
         if wwoz_event_href in self.seen_urls:
             return {}
 
         self.seen_urls.add(wwoz_event_href)
-        html = await self.fetch_page(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
+        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
         soup = BeautifulSoup(html, "html.parser")
-        event_data = soup.find("div", class_="EVENT-DATA")
-        related_artist_links = event_data.find_all("a", class_="related-artist-link")
+        event_data = soup.find("div", class_="content")
+        description_div = event_data.find("div", class_="field field-name-body")
+        description_field = description_div.find("div", class_="field-item even")
+        description = description_field.find("p", class_="field-item even").text.strip()
+        # TODO: CLEAN UP EXCESS VARS
+        related_artists_div = event_data.find(
+            "div", class_="field field-name-field-related-acts"
+        )
         # find the artist name in the related artist links if links exist
-
+        related_artists_list = related_artists_div.find(
+            "span", _class="textformatter-list"
+        )
+        related_artists = []
+        # TODO: if artist not in DB, add them
+        # now, we have no DB so whatever
+        event_artist = Artist(name=artist_name)
         # add all other artists in list that do match the artist as 'related artists'
+        for link in related_artists_list.find_all("a"):
+            if link.text.strip() != artist_name:
+                related_artists.append(
+                    Artist(name=link.text.strip(), wwoz_artist_href=link["href"])
+                )
+            else:
+                event_artist.wwoz_artist_href = wwoz_artist_href = link["href"]
+
+        return {
+            "description": description,
+        }
 
     async def parse_html(self, html: str, date_str: str) -> List[Event]:
         try:
