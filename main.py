@@ -460,7 +460,7 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def get_events_in_date_range(
+    def get_events(
         session: Session, start_date: datetime, end_date: datetime
     ) -> List[Event]:
         """
@@ -486,6 +486,16 @@ class DeepScraper:
     def __init__(self):
         self.session = None
         self.seen_urls = set()
+
+    async def run(self, params: Dict[str, str]) -> List[EventDTO]:
+        try:
+            html = await self.fetch_html(generate_url(params))
+            return await self.parse_html(html, params["date"])
+        except ScrapingError:
+            raise
+        except Exception as e:
+            logger.error(f"A {ErrorType.GENERAL_ERROR.value} occurred : {e}")
+            raise
 
     async def fetch_html(self, url: str) -> str:
         if not self.session:
@@ -649,6 +659,29 @@ class DeepScraper:
             "artist_data": artist_data,
         }
 
+    def parse_event_performance_time(date_str: str, time_str: str) -> datetime:
+        # Extract the relevant date and time portion
+        try:
+            # Parse the time string, e.g. "8:00pm"
+            time_stripped = time_str.strip()
+            time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
+            match = re.search(time_pattern, time_stripped, re.IGNORECASE)
+            # default to 12:00am if no time is found
+            extracted_time = match.group() if match else "12:00am"
+            # Combine the date and time into a full string
+            combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
+
+            # Parse the combined string into a naive datetime
+            naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
+
+            # Localize to the central timezone
+            localized_datetime = NEW_ORLEANS_TZ.localize(naive_datetime)
+            return localized_datetime
+        except Exception as e:
+            raise ValueError(
+                f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
+            ) from e
+
     async def parse_html(self, html: str, date_str: str) -> List[EventDTO]:
         try:
             soup = BeautifulSoup(html, "html.parser")
@@ -705,7 +738,9 @@ class DeepScraper:
                     time_str = calendar_info.find_all("p")[1].text.strip()
                     # the performance time had ought to be known
                     performance_time = (
-                        self.parse_datetime(date_str, time_str) if time_str else None
+                        self.parse_event_performance_time(date_str, time_str)
+                        if time_str
+                        else None
                     )
 
                     event = EventDTO(
@@ -797,28 +832,19 @@ def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
     return {**query_string_params, "date": date_param}
 
 
-async def scrape(params: Dict[str, str]) -> List[EventDTO]:
-    deep_scraper = DeepScraper()
-    try:
-        html = await deep_scraper.fetch_html(generate_url(params))
-        return await deep_scraper.parse_html(html, params["date"])
-    except ScrapingError:
-        raise
-    except Exception as e:
-        logger.error(f"A {ErrorType.GENERAL_ERROR.value} occurred : {e}")
-        raise
-
-
-def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
-    db_service = DatabaseHandler()
+def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
     try:
         # validate the parameters
         params = validate_params(event.get("queryStringParameters", {}))
-        events = scrape(params)
+        deep_scraper = DeepScraper()
+        events = deep_scraper.run(params)
         # Save to database
         scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
+        db_service = DatabaseHandler()
         db_service.save_events(events, scrape_date)
 
+        # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
+        # for now, just return the List of EventDTOs
         return generate_response(
             200,
             {
@@ -889,21 +915,24 @@ def run_scraper(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
         )
 
 
-# TODO: should return a ResponseType
-def read_from_db():
+# TODO: redis should be used first, then fallback to postgres
+def get_events(use_redis: bool = False) -> ResponseType:
+    # TODO: Integrate Cache Pipeline
     # Connect to Redis
-    redis_client = redis.StrictRedis(
-        host="redis-host", port=6379, decode_responses=True
-    )
-    cached_data = redis_client.get("latest_data")
+    if use_redis:
+        redis_client = redis.StrictRedis(
+            host="redis-host", port=6379, decode_responses=True
+        )
+        cached_data = redis_client.get("latest_data")
 
-    if cached_data:
-        # Return cached data
-        return {"statusCode": 200, "body": cached_data}
+        if cached_data:
+            # Return cached data
+            return {"statusCode": 200, "body": cached_data}
     else:
         # Fallback to Postgres
+        # For PROTOTYPE we will read from db
         db_handler = DatabaseHandler()
-        events = db_handler.get_events_in_date_range()
+        events = db_handler.get_events()
 
         # Cache the data again
         redis_client.set("latest_data", json.dumps(events))
@@ -921,9 +950,9 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseTyp
     http_method = event.get("httpMethod", "GET")
     try:
         if http_method == "POST":
-            return run_scraper(aws_info, event)
+            return create_events(aws_info, event)
         elif http_method == "GET":
-            return read_from_db()
+            return get_events()
         else:
             return generate_response(
                 400,
