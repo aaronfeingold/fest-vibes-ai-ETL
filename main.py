@@ -591,7 +591,6 @@ class DeepScraper:
             "is_active": is_active,
             "website": website,
             "wwoz_venue_href": wwoz_venue_href,
-            "event_artist": event_artist_name,
         }
 
     async def get_artist_details(self, wwoz_artist_href: str, artist_name: str) -> dict:
@@ -745,6 +744,7 @@ class DeepScraper:
                 panel_title = panel.find("h3", class_="panel-title")
                 # Extract venue info
                 if panel_title is None:
+                    print("WARNING NO TITLE")
                     logger.warning("Panel is missing Venue Name...This is unexpected.")
                 # parse text to get venue name
                 venue_name = (
