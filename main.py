@@ -665,11 +665,16 @@ class DeepScraper:
             return {}
 
         self.seen_urls.add(wwoz_artist_href)
-        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_artist_href))
-        soup = BeautifulSoup(html, "html.parser")
+        soup = await self.make_soup(wwoz_artist_href)
+        artist_details = {
+            "artist_name": artist_name,
+            "wwoz_artist_href": wwoz_artist_href,
+            "description": "lorum ipsum",  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
+            "genres": [],
+            "related_artists": [],
+        }
+
         content_div = soup.select_one(".content")
-        genres = []
-        related_artists = []
 
         if content_div is not None:
             try:
@@ -677,17 +682,19 @@ class DeepScraper:
                 # hopefully the artist has some genres listed...otherwise we just get some description,
                 # related acts (not always, and no need for deep crawl), and move along
                 if genres_div is not None:
-                    genres = [genre.text.strip() for genre in genres_div.find_all("a")]
+                    artist_details["genres"] = [
+                        genre.text.strip() for genre in genres_div.find_all("a")
+                    ]
 
                 related_artists_div = content_div.find(
                     "div", class_="field field-name-field-related-acts"
                 )
-                related_artists = []
+
                 if related_artists_div is not None:
                     related_artists_list = related_artists_div.find(
                         "span", _class="textformatter-list"
                     )
-                    related_artists = [
+                    artist_details["related_artists"] = [
                         related_artist.text.strip()
                         for related_artist in related_artists_list.find_all("a")
                     ]
@@ -699,13 +706,7 @@ class DeepScraper:
                     status_code=400,
                 )
 
-        return {
-            "artist_name": artist_name,
-            "description": "lorum ipsum",  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
-            "genres": genres,
-            "related_artists": related_artists,
-            "wwoz_artist_href": wwoz_artist_href,
-        }
+        return artist_details
 
     async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
