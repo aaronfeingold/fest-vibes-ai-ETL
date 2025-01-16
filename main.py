@@ -536,10 +536,9 @@ class DeepScraper:
                 status_code=500,
             )
 
-    async def get_venue_details(
-        self, wwoz_venue_href: str, event_artist_name: str
-    ) -> dict:
+    async def get_venue_details(self, wwoz_venue_href: str, venue_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
+        print("running get_venue_details")
         if wwoz_venue_href in self.seen_urls:
             return {}
         try:
@@ -547,21 +546,33 @@ class DeepScraper:
             html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
             soup = BeautifulSoup(html, "html.parser")
             content_div = soup.find("div", class_="content")
-            thoroughfare = content_div.find("div", class_="thoroughfare").text.strip()
-            locality = content_div.find("span", class_="locality").text.strip()
-            state = content_div.find("span", class_="state").text.strip()
-            postal_code = content_div.find("span", class_="postal-code").text.strip()
-            phone_section = content_div.find("div", class_="field-name-field-phone")
-            phone_number = phone_section.find("a").text.strip()
+            if content_div is not None:
+                print(f"found venue's {venue_name}content div")
+                thoroughfare = content_div.find(
+                    "div", class_="thoroughfare"
+                ).text.strip()
+                locality = content_div.find("span", class_="locality").text.strip()
+                state = content_div.find("span", class_="state").text.strip()
+                postal_code = content_div.find(
+                    "span", class_="postal-code"
+                ).text.strip()
+                website_div = content_div.find("div", class_="field-name-field-url")
+                phone_section = content_div.find("div", class_="field-name-field-phone")
+                phone_number = phone_section.find("a").text.strip()
             # find out if business is still active...if it has events then of course it is
             # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
             status_div = content_div.find(
                 "div", class_="field-name-field-organization-status"
             )
-            status = status_div.find("div", class_="field-item even").text.strip()
-            website_div = content_div.find("div", class_="field-name-field-url")
-            website_link = website_div.find("div", class_="field-item even")
-            website = website_link.find("a")["href"] if website_link else None
+
+            status = "active"
+            if status_div is not None:
+                status = status_div.find("div", class_="field-item even").text.strip()
+
+            website = None
+            if website_div is not None:
+                website_link = website_div.find("div", class_="field-item even")
+                website = website_link.find("a")["href"] if website_link else None
             is_active = True if status.lower() == "active" else False
         except Exception as e:
             raise ScrapingError(
@@ -585,6 +596,7 @@ class DeepScraper:
 
     async def get_artist_details(self, wwoz_artist_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
+        print("running get artist details")
         if wwoz_artist_href in self.seen_urls:
             return {}
         print(f"wwoz_artist_href: {wwoz_artist_href}")
@@ -596,7 +608,7 @@ class DeepScraper:
         # hopefully the artist has some genres listed...otherwise we just get some description,
         # related acts (not always, and no need for deep crawl), and move along
         genres = []
-        if genres_div:
+        if genres_div is not None:
             genres = [genre.text.strip() for genre in genres_div.find_all("a")]
 
         print(f"Event Artist Genres: {genres}")
@@ -605,7 +617,7 @@ class DeepScraper:
             "div", class_="field field-name-field-related-acts"
         )
         related_artists = []
-        if related_artists_div:
+        if related_artists_div is not None:
             related_artists_list = related_artists_div.find(
                 "span", _class="textformatter-list"
             )
@@ -624,7 +636,7 @@ class DeepScraper:
 
     async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
-        print("getting event details")
+        print("running get event details")
         if wwoz_event_href in self.seen_urls:
             return {}
 
@@ -658,9 +670,9 @@ class DeepScraper:
             # TODO: if artist not in DB, add them
             # now, we have no DB so whatever
             # add all other artists in list that do match the artist as 'related artists'
-            print("getting related acts")
+            print("getting event's related acts")
             for link in related_artists_list.find_all("a"):
-                if link.text.strip() != artist_name:
+                if link.text.strip() not in artist_name:
                     print("looping in related acts")
                     related_artists.append(
                         {"name": link.text.strip(), "wwoz_artist_href": link["href"]}
@@ -669,7 +681,7 @@ class DeepScraper:
                     # sometimes the artist name of the event artist has no link
                     # if it does, let's grab some more info, whatever there is, hopefully some genres
                     event_data["wwoz_artist_href"] = link["href"]
-
+        # cop[y the related artists to the event data if any -\()_()/-
         event_data["related_artists"] = related_artists
         artist_data = None
         if (
@@ -732,7 +744,7 @@ class DeepScraper:
                 # Venue name is each panel's title
                 panel_title = panel.find("h3", class_="panel-title")
                 # Extract venue info
-                if not panel_title:
+                if panel_title is None:
                     logger.warning("Panel is missing Venue Name...This is unexpected.")
                 # parse text to get venue name
                 venue_name = (
@@ -740,6 +752,8 @@ class DeepScraper:
                     if panel_title
                     else "Unknown Venue"
                 )
+
+                print(f"venue name: {venue_name}")
                 # get wwoz's venue href from the venue name
                 wwoz_venue_href = panel_title.find("a")["href"]
                 # use href to get details, and return the oringal href in the venue data
@@ -761,6 +775,7 @@ class DeepScraper:
                         continue
                     # get artist name and wwoz event href
                     event_artist_name = wwoz_event_link.text.strip()
+                    print(f" event artist name: {event_artist_name}")
                     wwoz_event_href = wwoz_event_link["href"]
                     # use the href to for the event to scrape deeper for more details on artists, and return any
                     artist_data, event_data = await self.get_event_details(
