@@ -583,35 +583,40 @@ class DeepScraper:
             "event_artist": event_artist_name,
         }
 
-    async def get_artist_details(self, wwoz_artist_href: str) -> dict:
+    async def get_artist_details(self, wwoz_artist_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
-        print("getting artist details")
         if wwoz_artist_href in self.seen_urls:
             return {}
-
+        print(f"wwoz_artist_href: {wwoz_artist_href}")
         self.seen_urls.add(wwoz_artist_href)
         html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_artist_href))
         soup = BeautifulSoup(html, "html.parser")
         content_div = soup.select_one(".content")
-        genres_div = content_div.find("div", class_="field field-name-field-genres")
+        genres_div = content_div.find("div", class_="field-name-field-genres")
         # hopefully the artist has some genres listed...otherwise we just get some description,
         # related acts (not always, and no need for deep crawl), and move along
-        genres = [genre.text.strip() for genre in genres_div.find_all("a")]
+        genres = []
+        if genres_div:
+            genres = [genre.text.strip() for genre in genres_div.find_all("a")]
+
         print(f"Event Artist Genres: {genres}")
 
         related_artists_div = content_div.find(
             "div", class_="field field-name-field-related-acts"
         )
-        related_artists_list = related_artists_div.find(
-            "span", _class="textformatter-list"
-        )
-        related_artists = [
-            related_artist.text.strip()
-            for related_artist in related_artists_list.find_all("a")
-        ]
+        related_artists = []
+        if related_artists_div:
+            related_artists_list = related_artists_div.find(
+                "span", _class="textformatter-list"
+            )
+            related_artists = [
+                related_artist.text.strip()
+                for related_artist in related_artists_list.find_all("a")
+            ]
 
         return {
-            "description": "lorum ipsum",
+            "artist_name": artist_name,
+            "description": "lorum ipsum",  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
             "genres": genres,
             "related_artists": related_artists,
             "wwoz_artist_href": wwoz_artist_href,
@@ -630,7 +635,9 @@ class DeepScraper:
         event_div = soup.find("div", class_="content")
         description_div = event_div.find("div", class_="field-name-body")
         description_field = description_div.find("div", class_="field-item even")
-        description = description_field.find("p", class_="field-item even").text.strip()
+        # TODO: USE OPENAI API TO EXTRACT EVENT DETAILS FROM DESCRIPTION
+        # IE 21+, Ticket Price, other websites (ticket, bands, event, etc)
+        description = description_field.find("p").text.strip()
         # create the event data object
         # more attrs will be added as we scrape more data
         event_data = {
@@ -638,44 +645,52 @@ class DeepScraper:
             "event_artist": artist_name,
             "description": description,
         }
-        # TODO: USE OPENAI API TO EXTRACT EVENT DETAILS FROM DESCRIPTION
-        # IE 21+, Ticket Price, other websites (ticket, bands, event, etc)
+
         related_artists_div = event_div.find(
-            "div", class_="field-name-field-related-acts"
+            "div", class_=re.compile(r"field-name-field-related-acts")
         )
         # find the artist name in the related artist links if links exist
-        related_artists_list = related_artists_div.find(
-            "span", _class="textformatter-list"
-        )
         related_artists = []
-        # TODO: if artist not in DB, add them
-        # now, we have no DB so whatever
-        # add all other artists in list that do match the artist as 'related artists'
-        for link in related_artists_list.find_all("a"):
-            if link.text.strip() != artist_name:
-                related_artists.append(
-                    Artist(name=link.text.strip(), wwoz_artist_href=link["href"])
-                )
-            else:
-                # sometimes the artist name of the event artist has no link
-                # if it does, let's grab some more info, whatever there is, hopefully some genres
-                event_data.wwoz_artist_href = link["href"]
+        if related_artists_div:
+            related_artists_list = related_artists_div.find(
+                "span", class_="textformatter-list"
+            )
+            # TODO: if artist not in DB, add them
+            # now, we have no DB so whatever
+            # add all other artists in list that do match the artist as 'related artists'
+            print("getting related acts")
+            for link in related_artists_list.find_all("a"):
+                if link.text.strip() != artist_name:
+                    print("looping in related acts")
+                    related_artists.append(
+                        {"name": link.text.strip(), "wwoz_artist_href": link["href"]}
+                    )
+                else:
+                    # sometimes the artist name of the event artist has no link
+                    # if it does, let's grab some more info, whatever there is, hopefully some genres
+                    event_data["wwoz_artist_href"] = link["href"]
 
-        event_data.related_artists = related_artists
-        if event_data.wwoz_artist_href:
-            artist_data = await self.get_artist_details(event_data.wwoz_artist_href)
+        event_data["related_artists"] = related_artists
+        artist_data = None
+        if (
+            "wwoz_artist_href" in event_data
+            and event_data["wwoz_artist_href"] is not None
+        ):
+            artist_data = await self.get_artist_details(
+                event_data["wwoz_artist_href"], artist_name
+            )
 
         # for now, let's just get the genres of the event artist if we have this info scraped
         # and give the event some genres for people to search by
-        if artist_data:
-            event_data.genres = artist_data["genres"]
+        if artist_data is not None:
+            event_data["genres"] = artist_data["genres"]
 
         return {
             "event_data": event_data,
             "artist_data": artist_data,
         }
 
-    def parse_event_performance_time(date_str: str, time_str: str) -> datetime:
+    def parse_event_performance_time(self, date_str: str, time_str: str) -> datetime:
         # Extract the relevant date and time portion
         try:
             # Parse the time string, e.g. "8:00pm"
