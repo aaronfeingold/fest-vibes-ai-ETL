@@ -628,7 +628,7 @@ class DeepScraper:
         html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
         soup = BeautifulSoup(html, "html.parser")
         event_div = soup.find("div", class_="content")
-        description_div = event_div.find("div", class_="field field-name-body")
+        description_div = event_div.find("div", class_="field-name-body")
         description_field = description_div.find("div", class_="field-item even")
         description = description_field.find("p", class_="field-item even").text.strip()
         # create the event data object
@@ -641,7 +641,7 @@ class DeepScraper:
         # TODO: USE OPENAI API TO EXTRACT EVENT DETAILS FROM DESCRIPTION
         # IE 21+, Ticket Price, other websites (ticket, bands, event, etc)
         related_artists_div = event_div.find(
-            "div", class_="field field-name-field-related-acts"
+            "div", class_="field-name-field-related-acts"
         )
         # find the artist name in the related artist links if links exist
         related_artists_list = related_artists_div.find(
