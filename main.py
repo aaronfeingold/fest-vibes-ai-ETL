@@ -509,7 +509,6 @@ class DeepScraper:
         if not self.session:
             self.session = aiohttp.ClientSession()
         try:
-            print(f"url: {url}")
             async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
                 if response.status != 200:
                     raise ScrapingError(
@@ -543,27 +542,33 @@ class DeepScraper:
         """Deep crawl venue page to get additional details"""
         if wwoz_venue_href in self.seen_urls:
             return {}
-
-        self.seen_urls.add(wwoz_venue_href)
-        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
-        soup = BeautifulSoup(html, "html.parser")
-        content_div = soup.select_one(".content")
-        thoroughfare = content_div.find("div", class_="thoroughfare").text.strip()
-        locality = content_div.find("span", class_="locality").text.strip()
-        state = content_div.find("span", class_="state").text.strip()
-        postal_code = content_div.find("span", class_="postal-code").text.strip()
-        phone_section = content_div.find("div", class_="field field-name-field-phone")
-        phone_number = phone_section.find("a").text.strip()
-        # find out if business is still active...if it has events then of course it is
-        # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
-        status_div = content_div.find(
-            "div", class_="field field-name-field-organization-status"
-        )
-        status = status_div.find("div", class_="field-item even").text.strip()
-        website_div = content_div.find("div", class_="field field-name-field-url")
-        website_link = website_div.find("div", class_="field-item even")
-        website = website_link.find("a")["href"] if website_link else None
-        is_active = True if status.lower() == "active" else False
+        try:
+            self.seen_urls.add(wwoz_venue_href)
+            html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
+            soup = BeautifulSoup(html, "html.parser")
+            content_div = soup.find("div", class_="content")
+            thoroughfare = content_div.find("div", class_="thoroughfare").text.strip()
+            locality = content_div.find("span", class_="locality").text.strip()
+            state = content_div.find("span", class_="state").text.strip()
+            postal_code = content_div.find("span", class_="postal-code").text.strip()
+            phone_section = content_div.find("div", class_="field-name-field-phone")
+            phone_number = phone_section.find("a").text.strip()
+            # find out if business is still active...if it has events then of course it is
+            # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
+            status_div = content_div.find(
+                "div", class_="field-name-field-organization-status"
+            )
+            status = status_div.find("div", class_="field-item even").text.strip()
+            website_div = content_div.find("div", class_="field-name-field-url")
+            website_link = website_div.find("div", class_="field-item even")
+            website = website_link.find("a")["href"] if website_link else None
+            is_active = True if status.lower() == "active" else False
+        except Exception as e:
+            raise ScrapingError(
+                message=f"Failed to scrape venue details: HTTP 500: {e}",
+                error_type=ErrorType.HTTP_ERROR,
+                status_code=500,
+            )
 
         return {
             "phone_number": phone_number,
@@ -580,6 +585,7 @@ class DeepScraper:
 
     async def get_artist_details(self, wwoz_artist_href: str) -> dict:
         """Deep crawl venue page to get additional details"""
+        print("getting artist details")
         if wwoz_artist_href in self.seen_urls:
             return {}
 
@@ -613,6 +619,7 @@ class DeepScraper:
 
     async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
+        print("getting event details")
         if wwoz_event_href in self.seen_urls:
             return {}
 
@@ -692,6 +699,7 @@ class DeepScraper:
             ) from e
 
     async def parse_html(self, html: str, date_str: str) -> List[EventDTO]:
+        print("parsing html")
         try:
             soup = BeautifulSoup(html, "html.parser")
             events = []
