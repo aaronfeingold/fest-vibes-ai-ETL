@@ -107,6 +107,7 @@ class ErrorType(Enum):
     FETCH_ERROR = "FETCH_ERROR"
     NO_EVENTS = "NO_EVENTS"
     PARSE_ERROR = "PARSE_ERROR"
+    SOUP_ERROR = "SOUP_ERROR"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
     AWS_ERROR = "AWS_ERROR"
     VALUE_ERROR = "VALUE_ERROR"
@@ -560,75 +561,103 @@ class DeepScraper:
                 status_code=500,
             )
 
-    async def get_venue_details(self, wwoz_venue_href: str, venue_name: str) -> dict:
-        """Deep crawl venue page to get additional details"""
-        print("running get_venue_details")
-        if wwoz_venue_href in self.seen_urls:
-            return {}
+    async def make_soup(self, href: str) -> BeautifulSoup:
         try:
-            self.seen_urls.add(wwoz_venue_href)
-            html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_venue_href))
-            soup = BeautifulSoup(html, "html.parser")
-            content_div = soup.find("div", class_="content")
-            if content_div is not None:
-                try:
-                    print(f"found venue's {venue_name}content div")
-                    thoroughfare = content_div.find(
-                        "div", class_="thoroughfare"
-                    ).text.strip()
-                    locality = content_div.find("span", class_="locality").text.strip()
-                    state = content_div.find("span", class_="state").text.strip()
-                    postal_code = content_div.find(
-                        "span", class_="postal-code"
-                    ).text.strip()
-                    website_div = content_div.find(
-                        "div", class_="field-name-field-url"
-                    )  # this div is not always present, if it is, then get the href
-                    phone_section = content_div.find(
-                        "div", class_="field-name-field-phone"
-                    )
-                    if phone_section is not None:
-                        phone_number = phone_section.find("a").text.strip()
-                except Exception as e:
-                    raise ScrapingError(
-                        message=f"Failed to scrape venue content section for address, website, phone etc etc: {e}",
-                        error_type=ErrorType.PARSE_ERROR,
-                        status_code=400,
-                    )
-            # find out if business is still active...if it has events then of course it is
-            # that being said, TODO: we could scrape all the WWOZ venues in future iteration and some may be inactive
-            status_div = content_div.find(
-                "div", class_="field-name-field-organization-status"
+            html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, href))
+            return BeautifulSoup(html, "html.parser")
+        except ScrapingError as e:
+            raise ScrapingError(
+                message=f"Failed to create soup from html: {e.message}",
+                error_type=e.error_type,
+                status_code=e.status_code,
             )
-
-            status = "active"
-            if status_div is not None:
-                status = status_div.find("div", class_="field-item even").text.strip()
-            is_active = True if status.lower() == "active" else False
-
-            website = None
-            if website_div is not None:
-                website_link = website_div.find("div", class_="field-item even")
-                website = website_link.find("a")["href"] if website_link else None
-
         except Exception as e:
             raise ScrapingError(
-                message=f"Failed to parse venue details: HTTP 500: {e}",
-                error_type=ErrorType.PARSE_ERROR,
+                message=f"An exception making soup: {e}",
+                error_type=ErrorType.SOUP_ERROR,
                 status_code=500,
             )
 
-        return {
-            "phone_number": phone_number,
-            "thoroughfare": thoroughfare,
-            "locality": locality,
-            "state": state,
-            "postal_code": postal_code,
-            "full_address": f"{thoroughfare}, {locality}, {state} {postal_code}",
-            "is_active": is_active,
-            "website": website,
+    def get_text_or_default(self, element, tag, class_name, default=""):
+        found = element.find(tag, class_=class_name)
+        return found.text.strip() if found else default
+
+    async def get_venue_details(self, wwoz_venue_href: str, venue_name: str) -> dict:
+        """Deep crawl venue page to get additional details"""
+
+        if wwoz_venue_href in self.seen_urls:
+            # don't build details again, we already have seen this URL today
+            return {}
+
+        self.seen_urls.add(wwoz_venue_href)
+        soup = await self.make_soup(wwoz_venue_href)
+        venue_details = {
+            "name": venue_name,
             "wwoz_venue_href": wwoz_venue_href,
+            "is_active": True,
+            "phone_number": "",
+            "thoroughfare": "",
+            "locality": "",
+            "state": "",
+            "postal_code": "",
+            "full_address": "",
+            "website": "",
         }
+        # find the content div if exists
+        content_div = soup.find("div", class_="content")
+
+        if content_div is not None:
+            try:
+                venue_details["thoroughfare"] = self.get_text_or_default(
+                    content_div, "div", "thoroughfare"
+                )
+                venue_details["locality"] = self.get_text_or_default(
+                    content_div, "span", "locality"
+                )
+                venue_details["state"] = self.get_text_or_default(
+                    content_div, "span", "state"
+                )
+                venue_details["postal_code"] = self.get_text_or_default(
+                    content_div, "span", "postal_code"
+                )
+
+                website_div = content_div.find(
+                    "div", class_="field-name-field-url"
+                )  # this div is not always present, if it is, then get the href
+
+                if website_div is not None:
+                    website_link = website_div.find("div", class_="field-item even")
+                    venue_details["website"] = (
+                        website_link.find("a")["href"] if website_link else ""
+                    )
+                phone_section = content_div.find("div", class_="field-name-field-phone")
+                if phone_section is not None:
+                    venue_details["phone_number"] = phone_section.find("a").text.strip()
+                # create a full address to transfer to geolocation API
+                venue_details["full_address"] = (
+                    f"""{venue_details['thoroughfare']}, {venue_details['locality']},
+                    {venue_details['state']} {venue_details['postal_code']}"""
+                )
+                # find out if business is still active...if it has events then of course it is
+                # that being said, TODO: we could be scraping all the WWOZ venues in a future iteration
+                # in which we may find some that are now inactive
+                status_div = content_div.find(
+                    "div", class_="field-name-field-organization-status"
+                )
+                if status_div is not None:
+                    status = status_div.find(
+                        "div", class_="field-item even"
+                    ).text.strip()
+                venue_details["is_active"] = (
+                    True if status.lower() == "active" else False
+                )
+            except Exception as e:
+                raise ScrapingError(
+                    message=f"Failed to scrape venue content section for address, website, phone etc etc: {e}",
+                    error_type=ErrorType.PARSE_ERROR,
+                    status_code=400,
+                )
+        return venue_details
 
     async def get_artist_details(self, wwoz_artist_href: str, artist_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
