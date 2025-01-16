@@ -645,12 +645,12 @@ class DeepScraper:
                     "div", class_="field-name-field-organization-status"
                 )
                 if status_div is not None:
-                    status = status_div.find(
-                        "div", class_="field-item even"
-                    ).text.strip()
-                venue_details["is_active"] = (
-                    True if status.lower() == "active" else False
-                )
+                    status = self.get_text_or_default(
+                        status_div, "div", "field-item even", "Active"
+                    )
+                    venue_details["is_active"] = (
+                        True if status.lower() == "active" else False
+                    )
             except Exception as e:
                 raise ScrapingError(
                     message=f"Failed to scrape venue content section for address, website, phone etc etc: {e}",
