@@ -343,17 +343,17 @@ class EventGenre(Base):
 # Data Transfer Objects
 @dataclass
 class VenueData:
-    name: str
-    thoroughfare: str
-    phone_number: str
-    locality: str
-    state: str
-    postal_code: str
-    full_address: str
-    is_active: str
-    website: str
-    wwoz_venue_href: str
-    event_artist: str
+    name: str = ""
+    thoroughfare: str = ""
+    phone_number: str = ""
+    locality: str = "New Orleans"  # Today, local. Tomorrow, the world
+    state: str = ""
+    postal_code: str = ""
+    full_address: str = ""
+    is_active: str = ""
+    website: str = ""
+    wwoz_venue_href: str = ""
+    event_artist: str = ""
 
 
 @dataclass
