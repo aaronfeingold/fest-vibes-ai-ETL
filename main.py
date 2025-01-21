@@ -7,12 +7,12 @@ from bs4 import BeautifulSoup
 import redis
 from botocore.exceptions import ClientError
 from urllib.error import URLError, HTTPError
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode
 from datetime import datetime, date
 import pytz
 from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sqlalchemy import (
     create_engine,
     Boolean,
@@ -358,20 +358,21 @@ class VenueData:
 
 @dataclass
 class ArtistData:
-    name: str
-    description: str
-    genres: List[str]
-    related_artists: List[str]
-    wwoz_artist_href: str
+    name: str = ""
+    description: str = "lorum ipsum"  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
+    genres: List[str] = field(default_factory=list)
+    related_artists: List[str] = field(default_factory=list)
+    wwoz_artist_href: str = ""
 
 
 @dataclass
 class EventData:
-    wwoz_event_href: str
-    event_artist: str
-    description: str
-    related_artists: List[str]
-    genres: List[str]
+    wwoz_event_href: str = ""
+    event_artist: str = ""
+    wwoz_artist_href: str = ""
+    description: str = ""
+    related_artists: List[str] = field(default_factory=list)
+    genres: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -424,7 +425,10 @@ class DatabaseHandler:
         session = self.Session()
         try:
             for event in events:
-                genre_objects = [self.get_or_create_genre(session, genre_name)for genre_name in event.event_data.genres]
+                genre_objects = [
+                    self.get_or_create_genre(session, genre_name)
+                    for genre_name in event.event_data.genres
+                ]
                 # Get or create venue
                 venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
                 if not venue:
@@ -476,7 +480,7 @@ class DatabaseHandler:
         except Exception as e:
             session.rollback()
             raise DatabaseHandlerError(
-                message=f"An unexpected error occurred while inserting: {e}",
+                message=f"Error saving event data to database: {e}",
                 error_type=ErrorType.DATABASE_ERROR,
                 status_code=500,
             )
@@ -522,13 +526,28 @@ class DeepScraper:
 
     async def run(self, params: Dict[str, str]) -> List[EventDTO]:
         try:
-            html = await self.fetch_html(generate_url(params))
+            html = await self.fetch_html(self.generate_url(params))
             return await self.parse_html(html, params["date"])
         except ScrapingError:
             raise
         except Exception as e:
             logger.error(f"A {ErrorType.GENERAL_ERROR.value} occurred : {e}")
             raise
+
+    def generate_url(
+        self,
+        params: Dict[str, str] = {},
+        endpoint: str = SAMPLE_ENDPOINT,
+        base_url: str = SAMPLE_WEBSITE,
+    ) -> str:
+        try:
+            return urljoin(base_url, endpoint, "?" + urlencode(params))
+        except (TypeError, Exception) as e:
+            raise ScrapingError(
+                message=f"Failed to create URL: {e}",
+                error_type=ErrorType.GENERAL_ERROR,
+                status_code=500,
+            )
 
     async def fetch_html(self, url: str) -> str:
         if not self.session:
@@ -561,14 +580,14 @@ class DeepScraper:
                 status_code=500,
             )
 
-    async def make_soup(self, href: str) -> BeautifulSoup:
+    async def make_soup(self, endpoint: str) -> BeautifulSoup:
         try:
-            html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, href))
+            html = await self.fetch_html(self.generate_url({}, endpoint))
             return BeautifulSoup(html, "html.parser")
         except ScrapingError as e:
             raise ScrapingError(
-                message=f"Failed to create soup from html: {e.message}",
                 error_type=e.error_type,
+                message=f"Failed to create soup from html: {e.message}",
                 status_code=e.status_code,
             )
         except Exception as e:
@@ -582,16 +601,16 @@ class DeepScraper:
         found = element.find(tag, class_=class_name)
         return found.text.strip() if found else default
 
-    async def get_venue_details(self, wwoz_venue_href: str, venue_name: str) -> dict:
+    async def get_venue_data(self, wwoz_venue_href: str, venue_name: str) -> dict:
         """Deep crawl venue page to get additional details"""
-
+        print("running get venue data")
         if wwoz_venue_href in self.seen_urls:
             # don't build details again, we already have seen this URL today
             return {}
 
         self.seen_urls.add(wwoz_venue_href)
         soup = await self.make_soup(wwoz_venue_href)
-        venue_details = {
+        venue_data = {
             "name": venue_name,
             "wwoz_venue_href": wwoz_venue_href,
             "is_active": True,
@@ -608,16 +627,16 @@ class DeepScraper:
 
         if content_div is not None:
             try:
-                venue_details["thoroughfare"] = self.get_text_or_default(
+                venue_data["thoroughfare"] = self.get_text_or_default(
                     content_div, "div", "thoroughfare"
                 )
-                venue_details["locality"] = self.get_text_or_default(
+                venue_data["locality"] = self.get_text_or_default(
                     content_div, "span", "locality"
                 )
-                venue_details["state"] = self.get_text_or_default(
+                venue_data["state"] = self.get_text_or_default(
                     content_div, "span", "state"
                 )
-                venue_details["postal_code"] = self.get_text_or_default(
+                venue_data["postal_code"] = self.get_text_or_default(
                     content_div, "span", "postal_code"
                 )
 
@@ -627,16 +646,16 @@ class DeepScraper:
 
                 if website_div is not None:
                     website_link = website_div.find("div", class_="field-item even")
-                    venue_details["website"] = (
+                    venue_data["website"] = (
                         website_link.find("a")["href"] if website_link else ""
                     )
                 phone_section = content_div.find("div", class_="field-name-field-phone")
                 if phone_section is not None:
-                    venue_details["phone_number"] = phone_section.find("a").text.strip()
+                    venue_data["phone_number"] = phone_section.find("a").text.strip()
                 # create a full address to transfer to geolocation API
-                venue_details["full_address"] = (
-                    f"""{venue_details['thoroughfare']}, {venue_details['locality']},
-                    {venue_details['state']} {venue_details['postal_code']}"""
+                venue_data["full_address"] = (
+                    f"""{venue_data['thoroughfare']}, {venue_data['locality']},
+                    {venue_data['state']} {venue_data['postal_code']}"""
                 )
                 # find out if business is still active...if it has events then of course it is
                 # that being said, TODO: we could be scraping all the WWOZ venues in a future iteration
@@ -648,7 +667,7 @@ class DeepScraper:
                     status = self.get_text_or_default(
                         status_div, "div", "field-item even", "Active"
                     )
-                    venue_details["is_active"] = (
+                    venue_data["is_active"] = (
                         True if status.lower() == "active" else False
                     )
             except Exception as e:
@@ -657,22 +676,23 @@ class DeepScraper:
                     error_type=ErrorType.PARSE_ERROR,
                     status_code=400,
                 )
-        return venue_details
+        return venue_data
 
-    async def get_artist_details(self, wwoz_artist_href: str, artist_name: str) -> dict:
+    async def get_artist_data(
+        self, wwoz_artist_href: str, artist_name: str
+    ) -> ArtistData:
         """Deep crawl venue page to get additional details"""
+        print("running get artist data")
         if wwoz_artist_href in self.seen_urls:
             return {}
 
         self.seen_urls.add(wwoz_artist_href)
         soup = await self.make_soup(wwoz_artist_href)
-        artist_details = {
-            "artist_name": artist_name,
-            "wwoz_artist_href": wwoz_artist_href,
-            "description": "lorum ipsum",  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
-            "genres": [],
-            "related_artists": [],
-        }
+
+        artist_data = ArtistData(
+            artist_name=artist_name,
+            wwoz_artist_href=wwoz_artist_href,
+        )
 
         content_div = soup.select_one(".content")
 
@@ -682,7 +702,7 @@ class DeepScraper:
                 # hopefully the artist has some genres listed...otherwise we just get some description,
                 # related acts (not always, and no need for deep crawl), and move along
                 if genres_div is not None:
-                    artist_details["genres"] = [
+                    artist_data.genres = [
                         genre.text.strip() for genre in genres_div.find_all("a")
                     ]
 
@@ -694,7 +714,7 @@ class DeepScraper:
                     related_artists_list = related_artists_div.find(
                         "span", _class="textformatter-list"
                     )
-                    artist_details["related_artists"] = [
+                    artist_data.related_artists = [
                         related_artist.text.strip()
                         for related_artist in related_artists_list.find_all("a")
                     ]
@@ -706,28 +726,26 @@ class DeepScraper:
                     status_code=400,
                 )
 
-        return artist_details
+        return artist_data
 
-    async def get_event_details(self, wwoz_event_href: str, artist_name: str) -> dict:
+    async def get_event_data(
+        self, wwoz_event_href: str, artist_name: str
+    ) -> tuple[EventData, ArtistData]:
         """Deep crawl venue page to get additional details"""
-        print("running get event details")
+        print("running get event data")
         if wwoz_event_href in self.seen_urls:
             return {}
 
         # TODO: CLEAN UP EXCESS VARS
         self.seen_urls.add(wwoz_event_href)
-        html = await self.fetch_html(urljoin(SAMPLE_WEBSITE, wwoz_event_href))
-        soup = BeautifulSoup(html, "html.parser")
-        event_div = soup.find("div", class_="content")
-        # create the event data object
-        # more attrs will be added as we scrape more data
-        event_data = {
-            "wwoz_event_href": wwoz_event_href,
-            "event_artist": artist_name,
-            "description": "",
-            "related_artists": [],
-        }
+        soup = await self.make_soup(wwoz_event_href)
 
+        event_data = EventData(
+            wwoz_event_href=wwoz_event_href,
+            event_artist=artist_name,
+        )
+
+        event_div = soup.find("div", class_="content")
         if event_div is not None:
             description_div = event_div.find("div", class_="field-name-body")
             try:
@@ -738,7 +756,7 @@ class DeepScraper:
                 # IE 21+, Ticket Price, other websites (ticket, bands, event, etc)
                 description = description_field.find("p").text.strip()
                 # add whatever description we have to the event data
-                event_data["description"] = description
+                event_data.description = description
             except Exception as e:
                 # if we error getting these things, who cares, just pass and default to no description
                 logger.warning(f"Failed to scrape event description aka lagniappe: {e}")
@@ -767,27 +785,28 @@ class DeepScraper:
                     else:
                         # sometimes the artist name of the event artist has no link
                         # if it does, let's grab some more info, whatever there is, hopefully some genres
-                        event_data["wwoz_artist_href"] = link["href"]
+                        event_data.wwoz_artist_href = link["href"]
             # copy the related artists to the event data if any -\()_()/-
-            event_data["related_artists"] = related_artists
+            event_data.related_artists = related_artists
         artist_data = None
-        if (
-            "wwoz_artist_href" in event_data
-            and event_data["wwoz_artist_href"] is not None
-        ):
-            artist_data = await self.get_artist_details(
-                event_data["wwoz_artist_href"], artist_name
+        if "wwoz_artist_href" in event_data and event_data.wwoz_artist_href is not None:
+            artist_data = await self.get_artist_data(
+                event_data.wwoz_artist_href, artist_name
             )
 
         # for now, let's just get the genres of the event artist if we have this info scraped
         # and give the event some genres for people to search by
-        if artist_data is not None:
-            event_data["genres"] = artist_data["genres"]
+        try:
+            if artist_data is not None and "genres" in artist_data is not None:
+                event_data.genres = artist_data.genres
+        except Exception as e:
+            raise ScrapingError(
+                message=f"Failed to add artist's genres to the event description: {e}",
+                error_type=ErrorType.PARSE_ERROR,
+                status_code=400,
+            )
 
-        return {
-            "event_data": event_data,
-            "artist_data": artist_data,
-        }
+        return event_data, artist_data
 
     def parse_event_performance_time(self, date_str: str, time_str: str) -> datetime:
         # Extract the relevant date and time portion
@@ -813,7 +832,6 @@ class DeepScraper:
             ) from e
 
     async def parse_html(self, html: str, date_str: str) -> List[EventDTO]:
-        print("parsing html")
         try:
             soup = BeautifulSoup(html, "html.parser")
             events = []
@@ -848,7 +866,7 @@ class DeepScraper:
                 # TODO: If venue not in DB, get info about it
                 # TODO: else if last updated over 1 month, get updated info
                 # TODO: for now, just get the venue details to protoype
-                venue_data = await self.get_venue_details(wwoz_venue_href, venue_name)
+                venue_data = await self.get_venue_data(wwoz_venue_href, venue_name)
                 # find the panel's body to ensure we are only dealing with the correct rows
                 panel_body = panel.find("div", class_="panel-body")
 
@@ -863,10 +881,9 @@ class DeepScraper:
                         continue
                     # get artist name and wwoz event href
                     event_artist_name = wwoz_event_link.text.strip()
-                    print(f" event artist name: {event_artist_name}")
                     wwoz_event_href = wwoz_event_link["href"]
                     # use the href to for the event to scrape deeper for more details on artists, and return any
-                    artist_data, event_data = await self.get_event_details(
+                    event_data, artist_data = await self.get_event_data(
                         wwoz_event_href, event_artist_name
                     )
                     # Extract time string
@@ -896,24 +913,6 @@ class DeepScraper:
                 error_type=ErrorType.PARSE_ERROR,
                 status_code=500,
             )
-
-
-def generate_url(
-    params: Dict[str, str] = {},
-    base_url: str = SAMPLE_WEBSITE,
-    endpoint: str = SAMPLE_ENDPOINT,
-) -> str:
-    params_str = ""
-    if params:
-        params_str = "&".join([f"?{k}={v}" for k, v in params.items()])
-    try:
-        return f"{base_url}{endpoint}{params_str}"
-    except (TypeError, Exception) as e:
-        raise ScrapingError(
-            message=f"Failed to create URL: {e}",
-            error_type=ErrorType.GENERAL_ERROR,
-            status_code=500,
-        )
 
 
 def generate_date_str() -> str:
@@ -1031,6 +1030,19 @@ async def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseTyp
                 "error": {
                     "type": ErrorType.AWS_ERROR,
                     "message": f"AWS error occurred: {error_message}",
+                },
+                **aws_info,
+            },
+        )
+    except DatabaseHandlerError as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return generate_response(
+            e.status_code,
+            {
+                "status": "error",
+                "error": {
+                    "type": e.error_type,
+                    "message": e.message,
                 },
                 **aws_info,
             },
