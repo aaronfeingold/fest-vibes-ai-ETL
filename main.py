@@ -251,6 +251,7 @@ class Genre(Base):
     artists = relationship(
         "Artist", secondary="artist_genres", back_populates="artists"
     )
+    events = relationship("Event", secondary="event_genres", back_populates="genres")
 
 
 # Join Tables
