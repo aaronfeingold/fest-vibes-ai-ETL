@@ -205,6 +205,13 @@ class Artist(Base):
         secondaryjoin="Artist.id==ArtistRelation.related_artist_id",
         back_populates="related_by_artists",
     )
+    related_by_artists = relationship(
+        "Artist",
+        secondary="artist_relations",
+        primaryjoin="Artist.id==ArtistRelation.related_artist_id",
+        secondaryjoin="Artist.id==ArtistRelation.artist_id",
+        back_populates="related_artists",
+    )
 
 
 class Event(Base):
