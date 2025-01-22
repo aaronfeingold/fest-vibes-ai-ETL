@@ -350,7 +350,7 @@ class VenueData:
     state: str = ""
     postal_code: str = ""
     full_address: str = ""
-    is_active: str = ""
+    is_active: Boolean = True
     website: str = ""
     wwoz_venue_href: str = ""
     event_artist: str = ""
@@ -601,7 +601,7 @@ class DeepScraper:
         found = element.find(tag, class_=class_name)
         return found.text.strip() if found else default
 
-    async def get_venue_data(self, wwoz_venue_href: str, venue_name: str) -> dict:
+    async def get_venue_data(self, wwoz_venue_href: str, venue_name: str) -> VenueData:
         """Deep crawl venue page to get additional details"""
         print("running get venue data")
         if wwoz_venue_href in self.seen_urls:
@@ -610,33 +610,26 @@ class DeepScraper:
 
         self.seen_urls.add(wwoz_venue_href)
         soup = await self.make_soup(wwoz_venue_href)
-        venue_data = {
-            "name": venue_name,
-            "wwoz_venue_href": wwoz_venue_href,
-            "is_active": True,
-            "phone_number": "",
-            "thoroughfare": "",
-            "locality": "",
-            "state": "",
-            "postal_code": "",
-            "full_address": "",
-            "website": "",
-        }
+        venue_data = VenueData(
+            name=venue_name,
+            wwoz_venue_href=wwoz_venue_href,
+            is_active=True,
+        )
         # find the content div if exists
         content_div = soup.find("div", class_="content")
 
         if content_div is not None:
             try:
-                venue_data["thoroughfare"] = self.get_text_or_default(
+                venue_data.thoroughfare = self.get_text_or_default(
                     content_div, "div", "thoroughfare"
                 )
-                venue_data["locality"] = self.get_text_or_default(
+                venue_data.locality = self.get_text_or_default(
                     content_div, "span", "locality"
                 )
-                venue_data["state"] = self.get_text_or_default(
+                venue_data.state = self.get_text_or_default(
                     content_div, "span", "state"
                 )
-                venue_data["postal_code"] = self.get_text_or_default(
+                venue_data.postal_code = self.get_text_or_default(
                     content_div, "span", "postal_code"
                 )
 
@@ -646,17 +639,15 @@ class DeepScraper:
 
                 if website_div is not None:
                     website_link = website_div.find("div", class_="field-item even")
-                    venue_data["website"] = (
+                    venue_data.website = (
                         website_link.find("a")["href"] if website_link else ""
                     )
                 phone_section = content_div.find("div", class_="field-name-field-phone")
                 if phone_section is not None:
-                    venue_data["phone_number"] = phone_section.find("a").text.strip()
+                    venue_data.phone_number = phone_section.find("a").text.strip()
                 # create a full address to transfer to geolocation API
-                venue_data["full_address"] = (
-                    f"""{venue_data['thoroughfare']}, {venue_data['locality']},
-                    {venue_data['state']} {venue_data['postal_code']}"""
-                )
+                venue_data.full_address = f"""{venue_data.thoroughfare}, {venue_data.locality},
+                    {venue_data.state} {venue_data.postal_code}"""
                 # find out if business is still active...if it has events then of course it is
                 # that being said, TODO: we could be scraping all the WWOZ venues in a future iteration
                 # in which we may find some that are now inactive
@@ -667,16 +658,27 @@ class DeepScraper:
                     status = self.get_text_or_default(
                         status_div, "div", "field-item even", "Active"
                     )
-                    venue_data["is_active"] = (
-                        True if status.lower() == "active" else False
-                    )
+                    venue_data.is_active = True if status.lower() == "active" else False
             except Exception as e:
                 raise ScrapingError(
                     message=f"Failed to scrape venue content section for address, website, phone etc etc: {e}",
                     error_type=ErrorType.PARSE_ERROR,
                     status_code=400,
                 )
+
         return venue_data
+
+    def is_attribute_non_empty(
+        self,
+        obj,
+        attr_name,
+    ):
+        if hasattr(obj, attr_name):  # Check if the attribute exists
+            value = getattr(obj, attr_name)  # Get the attribute value
+            return (
+                isinstance(value, str) and value != ""
+            )  # Check if it's a non-empty string
+        return False
 
     async def get_artist_data(
         self, wwoz_artist_href: str, artist_name: str
@@ -690,7 +692,7 @@ class DeepScraper:
         soup = await self.make_soup(wwoz_artist_href)
 
         artist_data = ArtistData(
-            artist_name=artist_name,
+            name=artist_name,
             wwoz_artist_href=wwoz_artist_href,
         )
 
@@ -789,7 +791,8 @@ class DeepScraper:
             # copy the related artists to the event data if any -\()_()/-
             event_data.related_artists = related_artists
         artist_data = None
-        if "wwoz_artist_href" in event_data and event_data.wwoz_artist_href is not None:
+
+        if self.is_attribute_non_empty(event_data, "wwoz_artist_href"):
             artist_data = await self.get_artist_data(
                 event_data.wwoz_artist_href, artist_name
             )
@@ -797,8 +800,14 @@ class DeepScraper:
         # for now, let's just get the genres of the event artist if we have this info scraped
         # and give the event some genres for people to search by
         try:
-            if artist_data is not None and "genres" in artist_data is not None:
-                event_data.genres = artist_data.genres
+            genre_list_empty = True
+            if hasattr(artist_data, "genres"):  # Check if the attribute exists
+                value = getattr(artist_data, "genres")  # Get the attribute value
+                genre_list_empty = (
+                    isinstance(value, tuple) and len(value) == 0
+                )  # Check if it's a non-empty string
+                if not genre_list_empty:
+                    event_data.genres = artist_data.genres
         except Exception as e:
             raise ScrapingError(
                 message=f"Failed to add artist's genres to the event description: {e}",
@@ -971,10 +980,12 @@ async def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseTyp
         # validate the parameters
         params = validate_params(event.get("queryStringParameters", {}))
         deep_scraper = DeepScraper()
+        print("running DeepScraper")
         events = await deep_scraper.run(params)
         # Save to database
         scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
         db_service = DatabaseHandler()
+        print("running DatabaseHandler.save_events")
         await db_service.save_events(events, scrape_date)
 
         # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
