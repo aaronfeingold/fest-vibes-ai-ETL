@@ -203,6 +203,7 @@ class Artist(Base):
         secondary="artist_relations",
         primaryjoin="Artist.id==ArtistRelation.artist_id",
         secondaryjoin="Artist.id==ArtistRelation.related_artist_id",
+        back_populates="related_by_artists",
     )
 
 
@@ -460,7 +461,12 @@ class DatabaseHandler:
                     .first()
                 )
                 if not artist:  # and some data is available
-                    artist = Artist(name=event.artist_data.name, genres=genre_objects)
+                    artist = Artist(
+                        name=event.artist_data.name,
+                        wwoz_artist_href=event.artist_data.wwoz_artist_href,
+                        related_artists=event.artist_data.related_artists,
+                        genres=genre_objects,
+                    )
                     session.add(artist)
 
                 # Create event
