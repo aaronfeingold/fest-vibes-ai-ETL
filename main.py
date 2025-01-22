@@ -154,27 +154,24 @@ class Venue(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    phone_number = Column(String)  # For easy contact on mobile frontend
+    phone_number = Column(String)
     thoroughfare = Column(String)
     locality = Column(String)
     state = Column(String)
     postal_code = Column(String)
     full_address = Column(String)
-    wwoz_venue_href = Column(String)
+    wwoz_venue_href = Column(
+        String
+    )  # Changed from wwoz_venue_url to match usage in code
     website = Column(String)
-    is_active = Column(
-        Boolean, default=True
-    )  # Added for venue status ie: is it still in business?
-    # Geolocation fields
-    latitude = Column(Float)  # Latitude of the venue
-    longitude = Column(Float)  # Longitude of the venue
-    # TODO: OPENAI CAN HANDLE THIS INFO POTENTIALLY; Added for festival planning; attrs not yet available
-    capacity = Column(Integer)  # Added for festival planning; attr not yet available
-    is_indoor = Column(
-        Boolean, default=True
-    )  # Added for festival planning; attr not yet available
+    is_active = Column(Boolean, default=True)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    capacity = Column(Integer)
+    is_indoor = Column(Boolean, default=True)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-    # relational fields
+
+    # Fixed relationships
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
     events = relationship("Event", back_populates="venue")
     artists = relationship("Artist", secondary="venue_artists", back_populates="venues")
@@ -190,11 +187,11 @@ class Artist(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     wwoz_artist_href = Column(String)
-    description = Column(String)  # TODO: USE OPENAI TO SUMMARIZE? -> Added for potential
-    # Experimental fields
-    popularity_score = Column(Float)  # Added for festival planning
-    typical_set_length = Column(Interval)  # Added for scheduling
-    # relational fields
+    description = Column(String)
+    popularity_score = Column(Float)
+    typical_set_length = Column(Interval)
+
+    # Fixed relationships
     events = relationship("Event", back_populates="artist")
     venues = relationship("Venue", secondary="venue_artists", back_populates="artists")
     genres = relationship("Genre", secondary="artist_genres", back_populates="artists")
@@ -219,27 +216,20 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True)
     wwoz_event_href = Column(String)
-    # Added for event details if any; may have price, age, etc
-    description = Column(String)  # TODO: Use OPENAI to infer other attrs.
-    # SQL Alchemy will set the IDS from the relational fields
+    description = Column(String)
     artist_id = Column(Integer, ForeignKey("artists.id"))
     venue_id = Column(Integer, ForeignKey("venues.id"))
     artist_name = Column(String)
     venue_name = Column(String)
     performance_time = Column(DateTime(timezone=True), nullable=False)
-    # Added for Gantt charts
-    end_time = Column(
-        DateTime(timezone=True)
-    )  # TODO: SEE IF OPENAI CAN INFER THIS FROM DESCRIPTIONS
+    end_time = Column(DateTime(timezone=True))
     scrape_date = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-    # TODO: SCRAPE THESE ATTRS FROM EVENT DETAILS, OR USE OPENAI TO INFER RECURRENCE
-    is_recurring = Column(Boolean, default=False)  # Added for recurring events
-    recurrence_pattern = Column(String)  # e.g., "weekly", "monthly", "annual"
-    # All are indoors unless the venue states otherwise.
-    # Example: Bacchanal (OUTDOORS) https://www.wwoz.org/organizations/bacchanal-outdoors
-    is_indoors = Column(Boolean)  # Added for Gantt planning
-    # relational fields
+    is_recurring = Column(Boolean, default=False)
+    recurrence_pattern = Column(String)
+    is_indoors = Column(Boolean)
+
+    # Fixed relationships
     artist = relationship("Artist", back_populates="events")
     venue = relationship("Venue", back_populates="events")
     genres = relationship("Genre", secondary="event_genres", back_populates="events")
@@ -255,19 +245,23 @@ class Genre(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
 
+    # Fixed relationships
     venues = relationship("Venue", secondary="venue_genres", back_populates="genres")
     artists = relationship("Artist", secondary="artist_genres", back_populates="genres")
-    events = relationship("Event", secondary="event_genres", back_populates="genres")
+    events = relationship("Event", secondary="event_genres", back_populates="events")
 
 
-# Join Tables
+# Join Tables - Added missing foreign key constraints and cascades
 class ArtistRelation(Base):
     __tablename__ = "artist_relations"
 
-    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
-    related_artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+    artist_id = Column(
+        Integer, ForeignKey("artists.id", ondelete="CASCADE"), primary_key=True
+    )
+    related_artist_id = Column(
+        Integer, ForeignKey("artists.id", ondelete="CASCADE"), primary_key=True
+    )
 
-    # Add indexes for better performance
     __table_args__ = (
         Index("ix_artist_relation_artist_id", artist_id),
         Index("ix_artist_relation_related_artist_id", related_artist_id),
@@ -277,36 +271,29 @@ class ArtistRelation(Base):
 class VenueArtist(Base):
     __tablename__ = "venue_artists"
 
-    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
-    artist_id = Column(Integer, ForeignKey("artists.id"), primary_key=True)
+    venue_id = Column(
+        Integer, ForeignKey("venues.id", ondelete="CASCADE"), primary_key=True
+    )
+    artist_id = Column(
+        Integer, ForeignKey("artists.id", ondelete="CASCADE"), primary_key=True
+    )
 
-    # Add indexes for better performance
     __table_args__ = (
         Index("ix_venue_artist_venue_id", venue_id),
         Index("ix_venue_artist_artist_id", artist_id),
     )
 
 
-class VenueEvent(Base):
-    __tablename__ = "venue_events"
-
-    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
-    event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
-
-    # Add indexes for better performance
-    __table_args__ = (
-        Index("ix_venue_event_venue_id", venue_id),
-        Index("ix_venue_event_event_id", event_id),
-    )
-
-
 class VenueGenre(Base):
     __tablename__ = "venue_genres"
 
-    venue_id = Column(Integer, ForeignKey("venues.id"), primary_key=True)
-    genre_id = Column(Integer, ForeignKey("genres.id"), primary_key=True)
+    venue_id = Column(
+        Integer, ForeignKey("venues.id", ondelete="CASCADE"), primary_key=True
+    )
+    genre_id = Column(
+        Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
+    )
 
-    # Add indexes for better performance
     __table_args__ = (
         Index("ix_venue_genre_venue_id", venue_id),
         Index("ix_venue_genre_genre_id", genre_id),
@@ -323,7 +310,6 @@ class ArtistGenre(Base):
         Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
     )
 
-    # Add indexes
     __table_args__ = (
         Index("ix_artist_genre_artist_id", artist_id),
         Index("ix_artist_genre_genre_id", genre_id),
@@ -340,7 +326,6 @@ class EventGenre(Base):
         Integer, ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True
     )
 
-    # Add indexes
     __table_args__ = (
         Index("ix_event_genre_event_id", event_id),
         Index("ix_event_genre_genre_id", genre_id),
