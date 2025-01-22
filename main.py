@@ -467,7 +467,7 @@ class DatabaseHandler:
                     .filter_by(name=event.artist_data.name)
                     .first()
                 )
-                if not artist:  # and some data is available
+                if not artist:  # add some data if available
                     artist = Artist(
                         name=event.artist_data.name,
                         wwoz_artist_href=event.artist_data.wwoz_artist_href,
@@ -697,7 +697,7 @@ class DeepScraper:
     async def get_artist_data(
         self, wwoz_artist_href: str, artist_name: str
     ) -> ArtistData:
-        """Deep crawl venue page to get additional details"""
+        """Deep crawl artist page to get additional details"""
         print("running get artist data")
         if wwoz_artist_href in self.seen_urls:
             return {}
