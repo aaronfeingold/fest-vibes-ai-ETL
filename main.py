@@ -432,10 +432,12 @@ class DatabaseHandler:
         session = self.Session()
         try:
             for event in events:
+                # Get or create genres
                 genre_objects = [
                     self.get_or_create_genre(session, genre_name)
                     for genre_name in event.event_data.genres
                 ]
+
                 # Get or create venue
                 venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
                 if not venue:
@@ -458,35 +460,58 @@ class DatabaseHandler:
                     session.add(venue)
                     session.flush()
 
-                # Get or create artist
+                # Get or create main artist
                 artist = (
-                    session.query(Artist)
-                    .filter_by(name=event.artist_data.name)
-                    .first()
+                    session.query(Artist).filter_by(name=event.artist_data.name).first()
                 )
-                if not artist:  # add data if available
+                if not artist:
                     artist = Artist(
                         name=event.artist_data.name,
                         wwoz_artist_href=event.artist_data.wwoz_artist_href,
                         description=event.artist_data.description,
-                        related_artists=event.artist_data.related_artists,
                         genres=genre_objects,
                     )
                     session.add(artist)
                     session.flush()
 
+                # Handle related artists
+                if (
+                    hasattr(event.event_data, "related_artists")
+                    and event.event_data.related_artists
+                ):
+                    for related_artist_data in event.event_data.related_artists:
+                        # Get or create related artist
+                        related_artist = (
+                            session.query(Artist)
+                            .filter_by(name=related_artist_data["name"])
+                            .first()
+                        )
+
+                        if not related_artist:
+                            related_artist = Artist(
+                                name=related_artist_data["name"],
+                                wwoz_artist_href=related_artist_data.get(
+                                    "wwoz_artist_href", ""
+                                ),
+                                genres=genre_objects,  # Assuming related artists share genres
+                            )
+                            session.add(related_artist)
+                            session.flush()
+
+                        # Add bi-directional relationship if it doesn't exist
+                        if related_artist not in artist.related_artists:
+                            artist.related_artists.append(related_artist)
+
                 # Create event
                 new_event = Event(
                     wwoz_event_href=event.event_data.wwoz_event_href,
                     description=event.event_data.description,
+                    artist_id=artist.id,
+                    venue_id=venue.id,
                     artist_name=event.artist_data.name,
                     venue_name=event.venue_data.name,
                     performance_time=event.performance_time,
                     scrape_date=scrape_date,
-                    artist=artist,
-                    venue=venue,
-                    artist_id=artist.id,
-                    venue_id=venue.id,
                     genres=genre_objects,
                 )
                 session.add(new_event)
@@ -495,11 +520,10 @@ class DatabaseHandler:
         except Exception as e:
             session.rollback()
             raise DatabaseHandlerError(
-                message=f"Error saving event data to database: {e}",
+                message=f"Error saving event data to database: {str(e)}",
                 error_type=ErrorType.DATABASE_ERROR,
                 status_code=500,
             )
-
         finally:
             session.close()
 
