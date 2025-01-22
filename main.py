@@ -256,9 +256,7 @@ class Genre(Base):
     name = Column(String, nullable=False, unique=True)
 
     venues = relationship("Venue", secondary="venue_genres", back_populates="genres")
-    artists = relationship(
-        "Artist", secondary="artist_genres", back_populates="artists"
-    )
+    artists = relationship("Artist", secondary="artist_genres", back_populates="genres")
     events = relationship("Event", secondary="event_genres", back_populates="genres")
 
 
@@ -442,8 +440,6 @@ class DatabaseHandler:
                 venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
                 if not venue:
                     geolocation = geocode_address(event.venue_data.full_address)
-                    latitude = geolocation["latitude"]
-                    longitude = geolocation["longitude"]
                     venue = Venue(
                         name=event.venue_data.name,
                         phone_number=event.venue_data.phone_number,
@@ -452,14 +448,15 @@ class DatabaseHandler:
                         state=event.venue_data.state,
                         postal_code=event.venue_data.postal_code,
                         full_address=event.venue_data.full_address,
-                        wwoz_venue_url=event.venue_data.wwoz_venue_href,
+                        wwoz_venue_href=event.venue_data.wwoz_venue_href,
                         website=event.venue_data.website,
                         is_active=event.venue_data.is_active,
-                        latitude=latitude,
-                        longitude=longitude,
+                        latitude=geolocation["latitude"],
+                        longitude=geolocation["longitude"],
                         genres=genre_objects,
                     )
                     session.add(venue)
+                    session.flush()
 
                 # Get or create artist
                 artist = (
@@ -467,14 +464,16 @@ class DatabaseHandler:
                     .filter_by(name=event.artist_data.name)
                     .first()
                 )
-                if not artist:  # add some data if available
+                if not artist:  # add data if available
                     artist = Artist(
                         name=event.artist_data.name,
                         wwoz_artist_href=event.artist_data.wwoz_artist_href,
+                        description=event.artist_data.description,
                         related_artists=event.artist_data.related_artists,
                         genres=genre_objects,
                     )
                     session.add(artist)
+                    session.flush()
 
                 # Create event
                 new_event = Event(
@@ -486,6 +485,8 @@ class DatabaseHandler:
                     scrape_date=scrape_date,
                     artist=artist,
                     venue=venue,
+                    artist_id=artist.id,
+                    venue_id=venue.id,
                     genres=genre_objects,
                 )
                 session.add(new_event)
