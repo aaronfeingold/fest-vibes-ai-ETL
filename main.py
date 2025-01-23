@@ -248,7 +248,7 @@ class Genre(Base):
     # Fixed relationships
     venues = relationship("Venue", secondary="venue_genres", back_populates="genres")
     artists = relationship("Artist", secondary="artist_genres", back_populates="genres")
-    events = relationship("Event", secondary="event_genres", back_populates="events")
+    events = relationship("Event", secondary="event_genres", back_populates="genres")
 
 
 # Join Tables - Added missing foreign key constraints and cascades
@@ -388,6 +388,7 @@ def geocode_address(address: str) -> dict:
         result = data["results"][0]
         lat = result["geometry"]["location"]["lat"]
         lng = result["geometry"]["location"]["lng"]
+
         return {"latitude": lat, "longitude": lng}
     else:
         raise ScrapingError(
