@@ -403,6 +403,8 @@ class DatabaseHandler:
         db_url = os.getenv("PG_DATABASE_URL")
         self.engine = create_engine(db_url)
         self.Session = sessionmaker(bind=self.engine)
+        # Add this line to create tables when initializing
+        self.create_tables()
 
     def create_tables(self):
         Base.metadata.create_all(self.engine)
