@@ -729,7 +729,10 @@ class DeepScraper:
         """Deep crawl artist page to get additional details"""
         print(f"running get artist data. {artist_name=}")
         if wwoz_artist_href in self.seen_urls:
-            return {}
+            return ArtistData(
+                name=artist_name,
+                wwoz_artist_href=wwoz_artist_href,
+            )
 
         self.seen_urls.add(wwoz_artist_href)
         soup = await self.make_soup(wwoz_artist_href)
