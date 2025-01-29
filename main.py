@@ -377,6 +377,8 @@ class EventDTO:
 
 
 def geocode_address(address: str) -> dict:
+    print("running geocode address")
+    print(f"address: {address}")
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     base_url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {"address": address, "key": api_key}
@@ -429,6 +431,7 @@ class DatabaseHandler:
                 # Get or create venue
                 venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
                 if not venue:
+                    print(f"venue name: {event.venue_data.name} not in DB")
                     geolocation = geocode_address(event.venue_data.full_address)
                     venue = Venue(
                         name=event.venue_data.name,
@@ -497,6 +500,7 @@ class DatabaseHandler:
                     )
                 # Create event
                 try:
+                    print("creating new event: ", event.event_data.wwoz_event_href)
                     new_event = Event(
                         wwoz_event_href=event.event_data.wwoz_event_href,
                         description=event.event_data.description,
@@ -723,7 +727,7 @@ class DeepScraper:
         self, wwoz_artist_href: str, artist_name: str
     ) -> ArtistData:
         """Deep crawl artist page to get additional details"""
-        print("running get artist data")
+        print(f"running get artist data. {artist_name=}")
         if wwoz_artist_href in self.seen_urls:
             return {}
 
@@ -835,6 +839,8 @@ class DeepScraper:
             artist_data = await self.get_artist_data(
                 event_data.wwoz_artist_href, artist_name
             )
+        else:
+            artist_data = ArtistData(name=artist_name)
 
         # for now, let's just get the genres of the event artist if we have this info scraped
         # and give the event some genres for people to search by
