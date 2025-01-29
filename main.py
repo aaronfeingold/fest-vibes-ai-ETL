@@ -474,19 +474,19 @@ class DatabaseHandler:
                         hasattr(event.event_data, "related_artists")
                         and event.event_data.related_artists
                     ):
-                        for related_artist_name in event.event_data.related_artists:
+                        for related_artist in event.event_data.related_artists:
                             # Get or create related artist
-                            related_artist = (
+                            related_artist_record = (
                                 session.query(Artist)
-                                .filter_by(name=related_artist_name)
+                                .filter_by(name=related_artist["name"])
                                 .first()
                             )
 
-                            if not related_artist:
-                                related_artist = Artist(
-                                    name=related_artist_name,
+                            if not related_artist_record:
+                                new_related_artist = Artist(
+                                    name=related_artist["name"],
                                 )
-                                session.add(related_artist)
+                                session.add(new_related_artist)
                                 session.flush()
 
                             # Add bi-directional relationship if it doesn't exist
