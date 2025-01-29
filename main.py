@@ -378,28 +378,29 @@ class EventDTO:
     scrape_date: date
 
 
-def geocode_address(address: str) -> dict:
+async def geocode_address(address: str) -> dict:
     print("running geocode address")
     print(f"address: {address}")
     api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     base_url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {"address": address, "key": api_key}
 
-    response = requests.get(base_url, params=params)
-    data = response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(base_url, params=params) as response:
+            data = await response.json()
 
-    if data["status"] == "OK":
-        result = data["results"][0]
-        lat = result["geometry"]["location"]["lat"]
-        lng = result["geometry"]["location"]["lng"]
+            if data["status"] == "OK":
+                result = data["results"][0]
+                lat = result["geometry"]["location"]["lat"]
+                lng = result["geometry"]["location"]["lng"]
 
-        return {"latitude": lat, "longitude": lng}
-    else:
-        raise ScrapingError(
-            message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
-            error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
-            status_code=500,
-        )
+                return {"latitude": lat, "longitude": lng}
+            else:
+                raise ScrapingError(
+                    message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
+                    error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
+                    status_code=500,
+                )
 
 
 class DatabaseHandler:
