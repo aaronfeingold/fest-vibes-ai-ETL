@@ -833,14 +833,12 @@ class DeepScraper:
                         event_data.wwoz_artist_href = link["href"]
             # copy the related artists to the event data if any -\()_()/-
             event_data.related_artists = related_artists
-        artist_data = None
+        artist_data = ArtistData(name=artist_name)
 
         if self.is_attribute_non_empty(event_data, "wwoz_artist_href"):
             artist_data = await self.get_artist_data(
                 event_data.wwoz_artist_href, artist_name
             )
-        else:
-            artist_data = ArtistData(name=artist_name)
 
         # for now, let's just get the genres of the event artist if we have this info scraped
         # and give the event some genres for people to search by
