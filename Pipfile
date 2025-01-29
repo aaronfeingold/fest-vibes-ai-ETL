@@ -12,11 +12,12 @@ botocore = "*"
 redis = "*"
 psycopg2-binary = "*"
 python-dotenv = "*"
-sqlalchemy = "*"
 boto3 = "*"
 requests = "*"
 asyncio = "*"
 aiohttp = "*"
+asyncpg = "*"
+sqlalchemy = {extras = ["asyncio"], version = "*"}
 
 [dev-packages]
 pytest = "*"

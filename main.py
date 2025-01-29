@@ -14,7 +14,6 @@ from typing import Dict, Any, List, TypedDict, Union
 from enum import Enum
 from dataclasses import dataclass, field
 from sqlalchemy import (
-    create_engine,
     Boolean,
     Column,
     Integer,
@@ -28,9 +27,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import sessionmaker, relationship, Session
+from sqlalchemy.orm import relationship, Session
 import requests
 import aiohttp
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import select
 
 load_dotenv()  # Load variables from .env
 
@@ -402,134 +404,145 @@ def geocode_address(address: str) -> dict:
 
 class DatabaseHandler:
     def __init__(self):
-        db_url = os.getenv("PG_DATABASE_URL")
-        self.engine = create_engine(db_url)
-        self.Session = sessionmaker(bind=self.engine)
-        # Add this line to create tables when initializing
-        self.create_tables()
+        # Note: PostgreSQL URL needs to be modified for async
+        # Format: postgresql+asyncpg://user:password@host:port/dbname
+        db_url = os.getenv("PG_DATABASE_URL").replace(
+            "postgresql://", "postgresql+asyncpg://"
+        )
+        self.engine = create_async_engine(db_url)
+        self.AsyncSession = async_sessionmaker(self.engine, class_=AsyncSession)
 
-    def create_tables(self):
-        Base.metadata.create_all(self.engine)
+    async def create_tables(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    def get_or_create_genre(self, session, name):
-        genre = session.query(Genre).filter_by(name=name).first()
+    async def get_or_create_genre(self, session: AsyncSession, name: str):
+        result = await session.execute(select(Genre).filter_by(name=name))
+        genre = result.scalar_one_or_none()
         if not genre:
             genre = Genre(name=name)
             session.add(genre)
         return genre
 
-    def save_events(self, events: List[EventDTO], scrape_date: date):
-        session = self.Session()
-        try:
-            for event in events:
-                # Get or create genres
-                genre_objects = [
-                    self.get_or_create_genre(session, genre_name)
-                    for genre_name in event.event_data.genres
-                ]
+    async def save_events(self, events: List[EventDTO], scrape_date: date):
+        async with self.AsyncSession() as session:
+            try:
+                for event in events:
+                    # Get or create genres
+                    genre_objects = []
+                    for genre_name in event.event_data.genres:
+                        genre = await self.get_or_create_genre(session, genre_name)
+                        genre_objects.append(genre)
 
-                # Get or create venue
-                venue = session.query(Venue).filter_by(name=event.venue_data.name).first()
-                if not venue:
-                    print(f"venue name: {event.venue_data.name} not in DB")
-                    geolocation = geocode_address(event.venue_data.full_address)
-                    venue = Venue(
-                        name=event.venue_data.name,
-                        phone_number=event.venue_data.phone_number,
-                        thoroughfare=event.venue_data.thoroughfare,
-                        locality=event.venue_data.locality,
-                        state=event.venue_data.state,
-                        postal_code=event.venue_data.postal_code,
-                        full_address=event.venue_data.full_address,
-                        wwoz_venue_href=event.venue_data.wwoz_venue_href,
-                        website=event.venue_data.website,
-                        is_active=event.venue_data.is_active,
-                        latitude=geolocation["latitude"],
-                        longitude=geolocation["longitude"],
-                        genres=genre_objects,
+                    # Get or create venue
+                    result = await session.execute(
+                        select(Venue).filter_by(name=event.venue_data.name)
                     )
-                    session.add(venue)
-                    session.flush()
+                    venue = result.scalar_one_or_none()
 
-                try:
-                    # Get or create main artist
-                    print(f"event.artist_data.name: {event.artist_data.name}")
-                    artist = (
-                        session.query(Artist)
-                        .filter_by(name=event.artist_data.name)
-                        .first()
-                    )
-                    if not artist:
-                        artist = Artist(
-                            name=event.artist_data.name,
-                            wwoz_artist_href=event.artist_data.wwoz_artist_href,
-                            description=event.artist_data.description,
+                    if not venue:
+                        print(f"venue name: {event.venue_data.name} not in DB")
+                        geolocation = await geocode_address(
+                            event.venue_data.full_address
+                        )
+                        venue = Venue(
+                            name=event.venue_data.name,
+                            phone_number=event.venue_data.phone_number,
+                            thoroughfare=event.venue_data.thoroughfare,
+                            locality=event.venue_data.locality,
+                            state=event.venue_data.state,
+                            postal_code=event.venue_data.postal_code,
+                            full_address=event.venue_data.full_address,
+                            wwoz_venue_href=event.venue_data.wwoz_venue_href,
+                            website=event.venue_data.website,
+                            is_active=event.venue_data.is_active,
+                            latitude=geolocation["latitude"],
+                            longitude=geolocation["longitude"],
                             genres=genre_objects,
                         )
-                        session.add(artist)
-                        session.flush()
+                        session.add(venue)
+                        await session.flush()
 
-                    # Handle related artists
-                    if (
-                        hasattr(event.event_data, "related_artists")
-                        and event.event_data.related_artists
-                    ):
-                        for related_artist in event.event_data.related_artists:
-                            # Get or create related artist
-                            related_artist_record = (
-                                session.query(Artist)
-                                .filter_by(name=related_artist["name"])
-                                .first()
+                    try:
+                        # Get or create main artist
+                        print(f"event.artist_data.name: {event.artist_data.name}")
+                        result = await session.execute(
+                            select(Artist).filter_by(name=event.artist_data.name)
+                        )
+                        artist = result.scalar_one_or_none()
+
+                        if not artist:
+                            artist = Artist(
+                                name=event.artist_data.name,
+                                wwoz_artist_href=event.artist_data.wwoz_artist_href,
+                                description=event.artist_data.description,
+                                genres=genre_objects,
                             )
+                            session.add(artist)
+                            await session.flush()
 
-                            if not related_artist_record:
-                                related_artist_record = Artist(
-                                    name=related_artist["name"],
+                        # Handle related artists
+                        if (
+                            hasattr(event.event_data, "related_artists")
+                            and event.event_data.related_artists
+                        ):
+                            for related_artist in event.event_data.related_artists:
+                                # Get or create related artist
+                                result = await session.execute(
+                                    select(Artist).filter_by(
+                                        name=related_artist["name"]
+                                    )
                                 )
-                                session.add(related_artist_record)
-                                session.flush()
+                                related_artist_record = result.scalar_one_or_none()
 
-                            # Add bi-directional relationship if it doesn't exist
-                            if related_artist_record not in artist.related_artists:
-                                artist.related_artists.append(related_artist_record)
-                except Exception as e:
-                    raise DatabaseHandlerError(
-                        message=f"Error handling artist and/or related artists info: {str(e)}",
-                        error_type=ErrorType.DATABASE_ERROR,
-                        status_code=500,
-                    )
-                # Create event
-                try:
-                    print("creating new event: ", event.event_data.wwoz_event_href)
-                    new_event = Event(
-                        wwoz_event_href=event.event_data.wwoz_event_href,
-                        description=event.event_data.description,
-                        artist_id=artist.id,
-                        venue_id=venue.id,
-                        artist_name=event.artist_data.name,
-                        venue_name=event.venue_data.name,
-                        performance_time=event.performance_time,
-                        scrape_date=scrape_date,
-                        genres=genre_objects,
-                    )
-                except Exception as e:
-                    raise DatabaseHandlerError(
-                        message=f"Error creating event for db: {str(e)}",
-                        error_type=ErrorType.DATABASE_ERROR,
-                        status_code=500,
-                    )
-                session.add(new_event)
+                                if not related_artist_record:
+                                    related_artist_record = Artist(
+                                        name=related_artist["name"],
+                                    )
+                                    session.add(related_artist_record)
+                                    await session.flush()
 
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            raise DatabaseHandlerError(
-                message=f"Error saving event data to database: {str(e)}",
-                error_type=ErrorType.DATABASE_ERROR,
-                status_code=500,
-            )
-        finally:
-            session.close()
+                                # Add bi-directional relationship if it doesn't exist
+                                if related_artist_record not in artist.related_artists:
+                                    artist.related_artists.append(related_artist_record)
+
+                    except Exception as e:
+                        raise DatabaseHandlerError(
+                            message=f"Error handling artist and/or related artists info: {str(e)}",
+                            error_type=ErrorType.DATABASE_ERROR,
+                            status_code=500,
+                        )
+
+                    # Create event
+                    try:
+                        print("creating new event: ", event.event_data.wwoz_event_href)
+                        new_event = Event(
+                            wwoz_event_href=event.event_data.wwoz_event_href,
+                            description=event.event_data.description,
+                            artist_id=artist.id,
+                            venue_id=venue.id,
+                            artist_name=event.artist_data.name,
+                            venue_name=event.venue_data.name,
+                            performance_time=event.performance_time,
+                            scrape_date=scrape_date,
+                            genres=genre_objects,
+                        )
+                    except Exception as e:
+                        raise DatabaseHandlerError(
+                            message=f"Error creating event for db: {str(e)}",
+                            error_type=ErrorType.DATABASE_ERROR,
+                            status_code=500,
+                        )
+                    session.add(new_event)
+
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                raise DatabaseHandlerError(
+                    message=f"Error saving event data to database: {str(e)}",
+                    error_type=ErrorType.DATABASE_ERROR,
+                    status_code=500,
+                )
 
     def get_events(
         session: Session, start_date: datetime, end_date: datetime
@@ -1033,6 +1046,7 @@ async def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseTyp
         db_service = DatabaseHandler()
         print("running DatabaseHandler.save_events")
         await db_service.save_events(events, scrape_date)
+        print("finished saving events to DB")
 
         # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
         # for now, just return the List of EventDTOs
