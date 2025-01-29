@@ -483,18 +483,18 @@ class DatabaseHandler:
                             )
 
                             if not related_artist_record:
-                                new_related_artist = Artist(
+                                related_artist_record = Artist(
                                     name=related_artist["name"],
                                 )
-                                session.add(new_related_artist)
+                                session.add(related_artist_record)
                                 session.flush()
 
                             # Add bi-directional relationship if it doesn't exist
-                            if related_artist not in artist.related_artists:
-                                artist.related_artists.append(related_artist)
+                            if related_artist_record not in artist.related_artists:
+                                artist.related_artists.append(related_artist_record)
                 except Exception as e:
                     raise DatabaseHandlerError(
-                        message=f"Error handling related artists: {str(e)}",
+                        message=f"Error handling artist and/or related artists info: {str(e)}",
                         error_type=ErrorType.DATABASE_ERROR,
                         status_code=500,
                     )
