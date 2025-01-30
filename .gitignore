@@ -6,3 +6,4 @@ package/
 *.zip
 .pytest_cache/
 __pycache__/
+data/
