@@ -7,6 +7,7 @@
 - Python 3.11.10
   - recommended: use `pyenv`
 - `pipenv`
+- postgres
 
 
 ## Installation
