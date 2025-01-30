@@ -1187,7 +1187,7 @@ class Controllers(Utilities):
                 200,
                 {
                     "status": "success",
-                    "data": events,
+                    "data": json.dumps(events, cls=EventDTOEncoder),
                     "date": params["date"],
                     **aws_info,
                 },
