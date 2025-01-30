@@ -10,9 +10,9 @@ from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin, urlencode
 from datetime import datetime, date
 import pytz
-from typing import Dict, Any, List, TypedDict, Union
+from typing import Dict, Any, List, TypedDict, Union, Optional
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from sqlalchemy import (
     Boolean,
     Column,
@@ -29,9 +29,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, Session
 import aiohttp
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.future import select
+from sqlalchemy.exc import SQLAlchemyError
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 load_dotenv()  # Load variables from .env
 
@@ -377,45 +379,96 @@ class EventDTO:
     scrape_date: date
 
 
-async def geocode_address(address: str) -> dict:
-    print("running geocode address")
-    print(f"address: {address}")
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
-    base_url = "https://maps.googleapis.com/maps/api/geocode/json"
-    params = {"address": address, "key": api_key}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(base_url, params=params) as response:
-            data = await response.json()
-
-            if data["status"] == "OK":
-                result = data["results"][0]
-                lat = result["geometry"]["location"]["lat"]
-                lng = result["geometry"]["location"]["lng"]
-
-                return {"latitude": lat, "longitude": lng}
-            else:
-                raise ScrapingError(
-                    message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
-                    error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
-                    status_code=500,
-                )
+class EventDTOEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (EventDTO, VenueData, ArtistData, EventData)):
+            return asdict(obj)
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, date):
+            return obj.isoformat()
+        return super().default(obj)
 
 
-class DatabaseHandler:
+class Services:
     def __init__(self):
-        # Note: PostgreSQL URL needs to be modified for async
-        # Format: postgresql+asyncpg://user:password@host:port/dbname
-        db_url = os.getenv("PG_DATABASE_URL").replace(
-            "postgresql://", "postgresql+asyncpg://"
-        )
-        self.engine = create_async_engine(db_url)
-        self.AsyncSession = async_sessionmaker(self.engine, class_=AsyncSession)
-        self.create_tables()
+        self.api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+        self.base_url = "https://maps.googleapis.com/maps/api/geocode/json"
+
+    async def geocode_address(self, address: str) -> dict:
+        params = {"address": address, "key": self.api_key}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.base_url, params=params) as response:
+                data = await response.json()
+
+                if data["status"] == "OK":
+                    result = data["results"][0]
+                    lat = result["geometry"]["location"]["lat"]
+                    lng = result["geometry"]["location"]["lng"]
+
+                    return {"latitude": lat, "longitude": lng}
+                else:
+                    raise ScrapingError(
+                        message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
+                        error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
+                        status_code=500,
+                    )
+
+
+class DatabaseHandler(Services):
+    def __init__(self, engine, async_session):
+        super().__init__()
+        self.engine = engine
+        self.AsyncSession = async_session
+
+    @classmethod
+    async def create(cls):
+        try:
+            db_url = os.getenv("PG_DATABASE_URL")
+            if not db_url:
+                raise ValueError("Database URL not found in environment variables")
+
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+            engine = create_async_engine(
+                db_url,
+                echo=False,  # Set to True for debugging
+                pool_size=5,
+                max_overflow=10,
+                pool_timeout=30,
+            )
+
+            async_session = async_sessionmaker(
+                engine, class_=AsyncSession, expire_on_commit=False
+            )
+
+            self = cls(engine, async_session)
+            await self.create_tables()
+            return self
+        except Exception as e:
+            logger.error(f"Failed to create DatabaseHandler: {str(e)}")
+            raise
+
+    @asynccontextmanager
+    async def get_session(self):
+        """Context manager for handling sessions"""
+        session = self.AsyncSession()
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
     async def create_tables(self):
-        async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        try:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to create tables: {str(e)}")
+            raise
 
     async def get_or_create_genre(self, session: AsyncSession, name: str):
         result = await session.execute(select(Genre).filter_by(name=name))
@@ -426,51 +479,51 @@ class DatabaseHandler:
         return genre
 
     async def save_events(self, events: List[EventDTO], scrape_date: date):
-        async with self.AsyncSession() as session:
+        async with self.get_session() as session:
             try:
-                for event in events:
-                    # Get or create genres
-                    genre_objects = []
-                    for genre_name in event.event_data.genres:
-                        genre = await self.get_or_create_genre(session, genre_name)
-                        genre_objects.append(genre)
+                async with session.begin():  # Ensures proper transaction handling
+                    for event in events:
+                        genre_objects = [
+                            await self.get_or_create_genre(session, genre)
+                            for genre in event.event_data.genres
+                        ]
 
-                    # Get or create venue
-                    result = await session.execute(
-                        select(Venue).filter_by(name=event.venue_data.name)
-                    )
-                    venue = result.scalar_one_or_none()
+                        venue = await session.execute(
+                            select(Venue).filter_by(name=event.venue_data.name)
+                        )
+                        venue = venue.scalar_one_or_none()
 
-                    if not venue:
-                        print(f"venue name: {event.venue_data.name} not in DB")
-                        geolocation = await geocode_address(
-                            event.venue_data.full_address
-                        )
-                        venue = Venue(
-                            name=event.venue_data.name,
-                            phone_number=event.venue_data.phone_number,
-                            thoroughfare=event.venue_data.thoroughfare,
-                            locality=event.venue_data.locality,
-                            state=event.venue_data.state,
-                            postal_code=event.venue_data.postal_code,
-                            full_address=event.venue_data.full_address,
-                            wwoz_venue_href=event.venue_data.wwoz_venue_href,
-                            website=event.venue_data.website,
-                            is_active=event.venue_data.is_active,
-                            latitude=geolocation["latitude"],
-                            longitude=geolocation["longitude"],
-                            genres=genre_objects,
-                        )
-                        session.add(venue)
+                        if not venue:
+                            print(f"venue name: {event.venue_data.name} not in DB")
+                            geolocation = await self.geocode_address(
+                                event.venue_data.full_address
+                            )
+                            venue = Venue(
+                                name=event.venue_data.name,
+                                phone_number=event.venue_data.phone_number,
+                                thoroughfare=event.venue_data.thoroughfare,
+                                locality=event.venue_data.locality,
+                                state=event.venue_data.state,
+                                postal_code=event.venue_data.postal_code,
+                                full_address=event.venue_data.full_address,
+                                wwoz_venue_href=event.venue_data.wwoz_venue_href,
+                                website=event.venue_data.website,
+                                is_active=event.venue_data.is_active,
+                                latitude=geolocation["latitude"],
+                                longitude=geolocation["longitude"],
+                                genres=genre_objects,
+                            )
+                            session.add(venue)
+
+                        # Commit changes before proceeding
                         await session.flush()
 
-                    try:
                         # Get or create main artist
                         print(f"event.artist_data.name: {event.artist_data.name}")
-                        result = await session.execute(
+                        artist = await session.execute(
                             select(Artist).filter_by(name=event.artist_data.name)
                         )
-                        artist = result.scalar_one_or_none()
+                        artist = artist.scalar_one_or_none()
 
                         if not artist:
                             artist = Artist(
@@ -482,41 +535,26 @@ class DatabaseHandler:
                             session.add(artist)
                             await session.flush()
 
-                        # Handle related artists
-                        if (
-                            hasattr(event.event_data, "related_artists")
-                            and event.event_data.related_artists
-                        ):
-                            for related_artist in event.event_data.related_artists:
-                                # Get or create related artist
-                                result = await session.execute(
-                                    select(Artist).filter_by(
-                                        name=related_artist["name"]
-                                    )
+                        # Handle related artists safely
+                        for related_artist in event.event_data.related_artists:
+                            related_artist_record = await session.execute(
+                                select(Artist).filter_by(name=related_artist["name"])
+                            )
+                            related_artist_record = (
+                                related_artist_record.scalar_one_or_none()
+                            )
+
+                            if not related_artist_record:
+                                related_artist_record = Artist(
+                                    name=related_artist["name"]
                                 )
-                                related_artist_record = result.scalar_one_or_none()
+                                session.add(related_artist_record)
+                                await session.flush()
 
-                                if not related_artist_record:
-                                    related_artist_record = Artist(
-                                        name=related_artist["name"],
-                                    )
-                                    session.add(related_artist_record)
-                                    await session.flush()
+                            if related_artist_record not in artist.related_artists:
+                                artist.related_artists.append(related_artist_record)
 
-                                # Add bi-directional relationship if it doesn't exist
-                                if related_artist_record not in artist.related_artists:
-                                    artist.related_artists.append(related_artist_record)
-
-                    except Exception as e:
-                        raise DatabaseHandlerError(
-                            message=f"Error handling artist and/or related artists info: {str(e)}",
-                            error_type=ErrorType.DATABASE_ERROR,
-                            status_code=500,
-                        )
-
-                    # Create event
-                    try:
-                        print("creating new event: ", event.event_data.wwoz_event_href)
+                        # Create event
                         new_event = Event(
                             wwoz_event_href=event.event_data.wwoz_event_href,
                             description=event.event_data.description,
@@ -528,15 +566,9 @@ class DatabaseHandler:
                             scrape_date=scrape_date,
                             genres=genre_objects,
                         )
-                    except Exception as e:
-                        raise DatabaseHandlerError(
-                            message=f"Error creating event for db: {str(e)}",
-                            error_type=ErrorType.DATABASE_ERROR,
-                            status_code=500,
-                        )
-                    session.add(new_event)
+                        session.add(new_event)
 
-                await session.commit()
+                    await session.commit()
             except Exception as e:
                 await session.rollback()
                 raise DatabaseHandlerError(
@@ -574,6 +606,10 @@ class DatabaseHandler:
                 error_type=ErrorType.DATABASE_ERROR,
                 status_code=500,
             )
+
+    async def close(self):
+        """Cleanup method to properly close the engine"""
+        await self.engine.dispose()
 
 
 class DeepScraper:
@@ -984,179 +1020,264 @@ class DeepScraper:
             )
 
 
-def generate_date_str() -> str:
-    try:
-        date_param = datetime.now(NEW_ORLEANS_TZ).date()
-        date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
-        return date_param.strftime(date_format)
-    except (ValueError, Exception) as e:
-        msg = f"Error generating a date for params: {e}"
-        logger.error(msg)
-        raise ScrapingError(
-            message=msg,
-            error_type=(
-                ErrorType.VALUE_ERROR
-                if isinstance(e, ValueError)
-                else ErrorType.GENERAL_ERROR
-            ),
-            status_code=400,
-        )
+class FileHandler:
+    @staticmethod
+    async def save_events_local(
+        events: List[EventDTO], filename: Optional[str] = None
+    ) -> str:
+        """
+        Save events to a local JSON file for development purposes.
+        Creates a 'data' directory in the project root if it doesn't exist.
+        """
+        print("running save_events_local")
+        # Setup data directory in project root
+        data_dir = Path(__file__).resolve().parent / "data"
+        data_dir.mkdir(exist_ok=True)
+
+        # Generate or use provided filename
+        if filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"event_data_{timestamp}.json"
+
+        # Ensure .json extension
+        if not filename.endswith(".json"):
+            filename += ".json"
+
+        filepath = data_dir / filename
+        print(f"{filepath=}")
+        # Save to file
+        with filepath.open("w", encoding="utf-8") as f:
+            json.dump(events, f, cls=EventDTOEncoder, indent=2, ensure_ascii=False)
+
+        return str(filepath)
+
+    @staticmethod
+    async def load_events_local() -> List[EventDTO]:
+        """
+        Load events from a local JSON file for development purposes.
+        """
+
+        data_dir = Path(__file__).resolve().parent / "data"
+        # Get the most recently created file in the data directory
+        latest_file = max(data_dir.glob("*.json"), key=os.path.getctime)
+
+        if not latest_file.exists():
+            raise FileNotFoundError(f"File not found: {latest_file}")
+
+        with latest_file.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        def dict_to_event(event_dict: dict) -> EventDTO:
+            artist_data = ArtistData(**event_dict["artist_data"])
+            venue_data = VenueData(**event_dict["venue_data"])
+            event_data = EventData(**event_dict["event_data"])
+
+            return EventDTO(
+                artist_data=artist_data,
+                venue_data=venue_data,
+                event_data=event_data,
+                performance_time=datetime.fromisoformat(event_dict["performance_time"]),
+                scrape_date=date.fromisoformat(event_dict["scrape_date"]),
+            )
+
+        return [dict_to_event(event) for event in data]
 
 
-def generate_response(status_code: int, body: ResponseBody) -> ResponseType:
-    if isinstance(body.get("error", {}).get("type"), ErrorType):
-        body["error"]["type"] = body["error"]["type"].value
+class Utilities(FileHandler):
+    def __init__(self):
+        super().__init__()
+        pass
 
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-        },
-        "body": body,
-    }
+    @staticmethod
+    def generate_response(status_code: int, body: ResponseBody) -> ResponseType:
+        if isinstance(body.get("error", {}).get("type"), ErrorType):
+            body["error"]["type"] = body["error"]["type"].value
 
+        return {
+            "statusCode": status_code,
+            "headers": {
+                "Content-Type": "application/json",
+            },
+            "body": body,
+        }
 
-# TODO: add more validation for the various query string parameters
-def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
-    # validate the date parameter (only 1 parameter is expected)
-    date_param = query_string_params.get("date")
-    if date_param:
+    @staticmethod
+    def generate_date_str() -> str:
         try:
-            datetime.strptime(date_param, DATE_FORMAT).date()
-        except ValueError as e:
+            date_param = datetime.now(NEW_ORLEANS_TZ).date()
+            date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
+            return date_param.strftime(date_format)
+        except (ValueError, Exception) as e:
+            msg = f"Error generating a date for params: {e}"
+            logger.error(msg)
             raise ScrapingError(
-                message=f"Invalid date format: {e}",
-                error_type=ErrorType.VALUE_ERROR,
+                message=msg,
+                error_type=(
+                    ErrorType.VALUE_ERROR
+                    if isinstance(e, ValueError)
+                    else ErrorType.GENERAL_ERROR
+                ),
                 status_code=400,
             )
-    else:
-        date_param = generate_date_str()
 
-    return {**query_string_params, "date": date_param}
+    # TODO: add more validation for the various query string parameters
+    @staticmethod
+    def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
+        # validate the date parameter (only 1 parameter is expected)
+        date_param = query_string_params.get("date")
+        if date_param:
+            try:
+                datetime.strptime(date_param, DATE_FORMAT).date()
+            except ValueError as e:
+                raise ScrapingError(
+                    message=f"Invalid date format: {e}",
+                    error_type=ErrorType.VALUE_ERROR,
+                    status_code=400,
+                )
+        else:
+            date_param = Utilities.generate_date_str()
+
+        return {**query_string_params, "date": date_param}
 
 
-async def create_events(aws_info: AwsInfo, event: Dict[str, Any]) -> ResponseType:
-    try:
-        # validate the parameters
-        params = validate_params(event.get("queryStringParameters", {}))
-        deep_scraper = DeepScraper()
-        print("running DeepScraper")
-        events = await deep_scraper.run(params)
-        # Save to database
-        scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
-        db_service = DatabaseHandler()
-        print("running DatabaseHandler.save_events")
-        await db_service.save_events(events, scrape_date)
-        print("finished saving events to DB")
+class Controllers(Utilities):
+    def __init__(self):
+        super().__init__()
 
-        # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
-        # for now, just return the List of EventDTOs
-        return generate_response(
-            200,
-            {
-                "status": "success",
-                "data": events,
-                "date": params["date"],
-                **aws_info,
-            },
-        )
-    except ScrapingError as e:
-        logger.error(f"Scraping error: {e.error_type} - {e.message}")
-        return generate_response(
-            e.status_code,
-            {
-                "status": "error",
-                "error": {
-                    "type": e.error_type,
-                    "message": e.message,
+    @staticmethod
+    async def create_events(
+        aws_info: AwsInfo, event: Dict[str, Any], skip_scrape=False
+    ) -> ResponseType:
+        try:
+            # validate the parameters
+            params = Utilities.validate_params(event.get("queryStringParameters", {}))
+            if not skip_scrape:
+                deep_scraper = DeepScraper()
+                print("running DeepScraper")
+                events = await deep_scraper.run(params)
+                print("save JSON output to file")
+                # save JSON output to file for debugging
+                await Utilities.save_events_local(events)
+            else:
+                # in development, load events from file for debugging
+                events = await Utilities.load_events_local()
+            # Save to database
+            scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
+            print("running DatabaseHandler.save_events")
+            db_handler = await DatabaseHandler.create()
+            await db_handler.save_events(events, scrape_date)
+            print("finished saving events to DB")
+
+            # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
+            # for now, just return the List of EventDTOs
+            return Utilities.generate_response(
+                200,
+                {
+                    "status": "success",
+                    "data": events,
+                    "date": params["date"],
+                    **aws_info,
                 },
-                **aws_info,
-            },
-        )
-    except HTTPError as e:
-        error = ScrapingError(
-            message=f"Failed to fetch data: HTTP {e.code}",
-            error_type=ErrorType.HTTP_ERROR,
-            status_code=e.code,
-        )
-        logger.error(f"HTTP error: {error.message}")
-        return generate_response(
-            error.status_code,
-            {
-                "status": "error",
-                "error": {
-                    "type": error.error_type,
-                    "message": error.message,
+            )
+        except ScrapingError as e:
+            logger.error(f"Scraping error: {e.error_type} - {e.message}")
+            return Utilities.generate_response(
+                e.status_code,
+                {
+                    "status": "error",
+                    "error": {
+                        "type": e.error_type,
+                        "message": e.message,
+                    },
+                    **aws_info,
                 },
-                **aws_info,
-            },
-        )
-    except ClientError as e:
-        error_message = e.response["Error"]["Message"]
-        error_code = e.response["Error"]["Code"]
-        logger.error(f"AWS ClientError: {error_code} - {error_message}")
-        return generate_response(
-            500,
-            {
-                "status": "error",
-                "error": {
-                    "type": ErrorType.AWS_ERROR,
-                    "message": f"AWS error occurred: {error_message}",
+            )
+        except HTTPError as e:
+            error = ScrapingError(
+                message=f"Failed to fetch data: HTTP {e.code}",
+                error_type=ErrorType.HTTP_ERROR,
+                status_code=e.code,
+            )
+            logger.error(f"HTTP error: {error.message}")
+            return Utilities.generate_response(
+                error.status_code,
+                {
+                    "status": "error",
+                    "error": {
+                        "type": error.error_type,
+                        "message": error.message,
+                    },
+                    **aws_info,
                 },
-                **aws_info,
-            },
-        )
-    except DatabaseHandlerError as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return generate_response(
-            e.status_code,
-            {
-                "status": "error",
-                "error": {
-                    "type": e.error_type,
-                    "message": e.message,
+            )
+        except ClientError as e:
+            error_message = e.response["Error"]["Message"]
+            error_code = e.response["Error"]["Code"]
+            logger.error(f"AWS ClientError: {error_code} - {error_message}")
+            return Utilities.generate_response(
+                500,
+                {
+                    "status": "error",
+                    "error": {
+                        "type": ErrorType.AWS_ERROR,
+                        "message": f"AWS error occurred: {error_message}",
+                    },
+                    **aws_info,
                 },
-                **aws_info,
-            },
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return generate_response(
-            500,
-            {
-                "status": "error",
-                "error": {
-                    "type": ErrorType.UNKNOWN_ERROR,
-                    "message": f"An unexpected error occurred: {e}",
+            )
+        except DatabaseHandlerError as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return Utilities.generate_response(
+                e.status_code,
+                {
+                    "status": "error",
+                    "error": {
+                        "type": e.error_type,
+                        "message": e.message,
+                    },
+                    **aws_info,
                 },
-                **aws_info,
-            },
-        )
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return Utilities.generate_response(
+                500,
+                {
+                    "status": "error",
+                    "error": {
+                        "type": ErrorType.UNKNOWN_ERROR,
+                        "message": f"An unexpected error occurred: {e}",
+                    },
+                    **aws_info,
+                },
+            )
+        finally:
+            await db_handler.close()
 
+    # TODO: redis should be used first, then fallback to postgres
+    @staticmethod
+    async def get_events(use_redis: bool = False) -> ResponseType:
+        # TODO: Integrate Cache Pipeline
+        # Connect to Redis
+        if use_redis:
+            redis_client = redis.StrictRedis(
+                host="redis-host", port=6379, decode_responses=True
+            )
+            cached_data = redis_client.get("latest_data")
 
-# TODO: redis should be used first, then fallback to postgres
-def get_events(use_redis: bool = False) -> ResponseType:
-    # TODO: Integrate Cache Pipeline
-    # Connect to Redis
-    if use_redis:
-        redis_client = redis.StrictRedis(
-            host="redis-host", port=6379, decode_responses=True
-        )
-        cached_data = redis_client.get("latest_data")
+            if cached_data:
+                # Return cached data
+                return {"statusCode": 200, "body": cached_data}
+        else:
+            # Fallback to Postgres
+            # For PROTOTYPE we will read from db
+            db_handler = await DatabaseHandler.create()
+            events = await db_handler.get_events()
 
-        if cached_data:
-            # Return cached data
-            return {"statusCode": 200, "body": cached_data}
-    else:
-        # Fallback to Postgres
-        # For PROTOTYPE we will read from db
-        db_handler = DatabaseHandler()
-        events = db_handler.get_events()
+            # Cache the data again
+            redis_client.set("latest_data", json.dumps(events))
 
-        # Cache the data again
-        redis_client.set("latest_data", json.dumps(events))
-
-        return {"statusCode": 200, "body": json.dumps(events)}
+            return {"statusCode": 200, "body": json.dumps(events)}
 
 
 async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
@@ -1169,11 +1290,11 @@ async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Respo
     http_method = event.get("httpMethod", "GET")
     try:
         if http_method == "POST":
-            return await create_events(aws_info, event)
+            return await Controllers.create_events(aws_info, event, True)
         elif http_method == "GET":
-            return get_events()
+            return Controllers.get_events()
         else:
-            return generate_response(
+            return Controllers.generate_response(
                 400,
                 {
                     "status": "error",
@@ -1181,4 +1302,4 @@ async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Respo
                 },
             )
     except Exception as e:
-        return generate_response(500, {"status": "error", "error": str(e)})
+        return Controllers.generate_response(500, {"status": "error", "error": str(e)})
