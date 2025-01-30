@@ -411,6 +411,7 @@ class DatabaseHandler:
         )
         self.engine = create_async_engine(db_url)
         self.AsyncSession = async_sessionmaker(self.engine, class_=AsyncSession)
+        self.create_tables()
 
     async def create_tables(self):
         async with self.engine.begin() as conn:
