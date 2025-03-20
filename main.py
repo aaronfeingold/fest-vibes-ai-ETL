@@ -49,7 +49,7 @@ SAMPLE_ENDPOINT = "/calendar/livewire-music"
 # since current version is New Orleans' events specific
 NEW_ORLEANS_TZ = pytz.timezone("America/Chicago")
 # Current date format for query params...subject to change on the website's whims
-DATE_FORMAT = "%Y-%m-%d"
+WWOZ_DATE_FORMAT = "%Y-%m-%d"
 
 # Default headers for HTTP requests to prevent Bot detection
 DEFAULT_HEADERS = {
@@ -226,7 +226,7 @@ class Event(Base):
     venue_name = Column(String)
     performance_time = Column(DateTime(timezone=True), nullable=False)
     end_time = Column(DateTime(timezone=True))
-    scrape_date = Column(Date, nullable=False)
+    scrape_time = Column(Date, nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     is_recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)
@@ -362,6 +362,7 @@ class ArtistData:
 
 @dataclass
 class EventData:
+    event_date: datetime
     wwoz_event_href: str = ""
     event_artist: str = ""
     wwoz_artist_href: str = ""
@@ -376,7 +377,7 @@ class EventDTO:
     venue_data: VenueData
     event_data: EventData
     performance_time: datetime
-    scrape_date: date
+    scrape_time: date
 
 
 class EventDTOEncoder(json.JSONEncoder):
@@ -478,7 +479,7 @@ class DatabaseHandler(Services):
             session.add(genre)
         return genre
 
-    async def save_events(self, events: List[EventDTO], scrape_date: date):
+    async def save_events(self, events: List[EventDTO], scrape_time: date):
         async with self.get_session() as session:  # This already starts a transaction
             try:
                 for event in events:
@@ -569,6 +570,7 @@ class DatabaseHandler(Services):
 
                     # Create event
                     new_event = Event(
+                        event_date=event.event_data.event_date,
                         wwoz_event_href=event.event_data.wwoz_event_href,
                         description=event.event_data.description,
                         artist_id=artist.id,
@@ -576,7 +578,7 @@ class DatabaseHandler(Services):
                         artist_name=event.artist_data.name,
                         venue_name=event.venue_data.name,
                         performance_time=event.performance_time,
-                        scrape_date=scrape_date,
+                        scrape_time=scrape_time,
                         genres=genre_objects,
                     )
                     session.add(new_event)
@@ -1018,7 +1020,7 @@ class DeepScraper:
                         venue_data=venue_data,
                         event_data=event_data,
                         performance_time=performance_time,
-                        scrape_date=datetime.now(NEW_ORLEANS_TZ).date(),
+                        scrape_time=datetime.now(NEW_ORLEANS_TZ).date(),
                     )
                     events.append(event)
 
@@ -1090,7 +1092,7 @@ class FileHandler:
                 venue_data=venue_data,
                 event_data=event_data,
                 performance_time=datetime.fromisoformat(event_dict["performance_time"]),
-                scrape_date=date.fromisoformat(event_dict["scrape_date"]),
+                scrape_time=date.fromisoformat(event_dict["scrape_time"]),
             )
 
         return [dict_to_event(event) for event in data]
@@ -1118,7 +1120,7 @@ class Utilities(FileHandler):
     def generate_date_str() -> str:
         try:
             date_param = datetime.now(NEW_ORLEANS_TZ).date()
-            date_format = os.getenv("DATE_FORMAT", DATE_FORMAT)
+            date_format = os.getenv("WWOZ_DATE_FORMAT", WWOZ_DATE_FORMAT)
             return date_param.strftime(date_format)
         except (ValueError, Exception) as e:
             msg = f"Error generating a date for params: {e}"
@@ -1136,11 +1138,16 @@ class Utilities(FileHandler):
     # TODO: add more validation for the various query string parameters
     @staticmethod
     def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
-        # validate the date parameter (only 1 parameter is expected)
+        # validate the date parameter (only 1 parameter is expected as of now)
+        # TODO: abstract logic per parameter
+        logger.info("Validating query string parameters")
         date_param = query_string_params.get("date")
         if date_param:
+            logger.info(
+                f"Date parameter found, validating format for WWOZ params: {date_param}"
+            )
             try:
-                datetime.strptime(date_param, DATE_FORMAT).date()
+                datetime.strptime(date_param, WWOZ_DATE_FORMAT).date()
             except ValueError as e:
                 raise ScrapingError(
                     message=f"Invalid date format: {e}",
@@ -1148,6 +1155,7 @@ class Utilities(FileHandler):
                     status_code=400,
                 )
         else:
+            logger.info("No date parameter found. Generating a new date.")
             date_param = Utilities.generate_date_str()
 
         return {**query_string_params, "date": date_param}
@@ -1159,27 +1167,31 @@ class Controllers(Utilities):
 
     @staticmethod
     async def create_events(
-        aws_info: AwsInfo, event: Dict[str, Any], skip_scrape=False
+        aws_info: AwsInfo, event: Dict[str, Any], dev_env=False
     ) -> ResponseType:
+        db_handler = None
         try:
             # validate the parameters
             params = Utilities.validate_params(event.get("queryStringParameters", {}))
-            if not skip_scrape:
+            scrape_time = datetime.now(NEW_ORLEANS_TZ).date()  # Convert to date for DB storage
+
+            if not dev_env:
+                logger.info("running DeepScraper")
                 deep_scraper = DeepScraper()
-                print("running DeepScraper")
                 events = await deep_scraper.run(params)
-                print("save JSON output to file")
+                logger.info("save JSON output to file")
                 # save JSON output to file for debugging
+                # TODO: use if then logic for prod to write to S3 for back-testing
                 await Utilities.save_events_local(events)
             else:
                 # in development, load events from file for debugging
                 events = await Utilities.load_events_local()
+
             # Save to database
-            scrape_date = datetime.strptime(params["date"], DATE_FORMAT).date()
-            print("running DatabaseHandler.save_events")
+            logger.info("running DatabaseHandler.save_events")
             db_handler = await DatabaseHandler.create()
-            await db_handler.save_events(events, scrape_date)
-            print("finished saving events to DB")
+            await db_handler.save_events(events, scrape_time)
+            logger.info("finished saving events to DB")
 
             # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
             # for now, just return the List of EventDTOs
@@ -1188,7 +1200,7 @@ class Controllers(Utilities):
                 {
                     "status": "success",
                     "data": json.dumps(events, cls=EventDTOEncoder),
-                    "date": params["date"],
+                    "scrape_time": scrape_time.strftime(WWOZ_DATE_FORMAT),
                     **aws_info,
                 },
             )
@@ -1265,7 +1277,8 @@ class Controllers(Utilities):
                 },
             )
         finally:
-            await db_handler.close()
+            if db_handler:  # Only close if db_handler was successfully initialized
+                await db_handler.close()
 
     # TODO: redis should be used first, then fallback to postgres
     @staticmethod
@@ -1303,7 +1316,9 @@ async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Respo
     http_method = event.get("httpMethod", "GET")
     try:
         if http_method == "POST":
-            return await Controllers.create_events(aws_info, event, True)
+            return await Controllers.create_events(
+                aws_info, event, dev_env=event.get("devEnv", False)
+            )
         elif http_method == "GET":
             return Controllers.get_events()
         else:
