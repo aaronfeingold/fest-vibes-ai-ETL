@@ -24,6 +24,7 @@ from sqlalchemy import (
     ForeignKey,
     Float,
     Interval,
+    Vector,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -34,6 +35,9 @@ from sqlalchemy.future import select
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 from pathlib import Path
+from sqlalchemy import text
+import numpy as np
+from sentence_transformers import SentenceTransformer
 
 load_dotenv()  # Load variables from .env
 
@@ -239,6 +243,9 @@ class Event(Base):
     is_recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)
     is_indoors = Column(Boolean)
+    # Add vector embedding columns
+    description_embedding = Column(Vector(384))  # Using all-MiniLM-L6-v2 model
+    event_text_embedding = Column(Vector(384))  # Combined text for semantic search
 
     # Fixed relationships
     artist = relationship("Artist", back_populates="events")
@@ -248,6 +255,18 @@ class Event(Base):
     @hybrid_property
     def full_url(self):
         return urljoin(SAMPLE_WEBSITE, self.wwoz_event_href)
+
+    def generate_embeddings(self):
+        """Generate embeddings for the event description and combined text"""
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
+        # Generate description embedding
+        if self.description:
+            self.description_embedding = model.encode(self.description)
+
+        # Generate combined text embedding for semantic search
+        combined_text = f"{self.artist_name} {self.venue_name} {self.description or ''}"
+        self.event_text_embedding = model.encode(combined_text)
 
 
 class Genre(Base):
@@ -430,6 +449,7 @@ class DatabaseHandler(Services):
         super().__init__()
         self.engine = engine
         self.AsyncSession = async_session
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     @classmethod
     async def create(cls):
@@ -474,8 +494,10 @@ class DatabaseHandler(Services):
     async def create_tables(self):
         try:
             async with self.engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)  # Drop all tables first
-                await conn.run_sync(Base.metadata.create_all)  # Create all tables
+                # Enable pgvector extension
+                await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
         except SQLAlchemyError as e:
             logger.error(f"Failed to create tables: {str(e)}")
             raise
@@ -488,8 +510,16 @@ class DatabaseHandler(Services):
             session.add(genre)
         return genre
 
+    async def generate_embeddings_for_event(self, event: Event):
+        """Generate embeddings for an event"""
+        if event.description:
+            event.description_embedding = self.embedding_model.encode(event.description)
+
+        combined_text = f"{event.artist_name} {event.venue_name} {event.description or ''}"
+        event.event_text_embedding = self.embedding_model.encode(combined_text)
+
     async def save_events(self, events: List[EventDTO], scrape_time: date):
-        async with self.get_session() as session:  # This already starts a transaction
+        async with self.get_session() as session:
             try:
                 for event in events:
                     # Fetch or create genres
@@ -596,6 +626,10 @@ class DatabaseHandler(Services):
                         scrape_time=scrape_time,
                         genres=genre_objects,
                     )
+
+                    # Generate embeddings for the new event
+                    await self.generate_embeddings_for_event(new_event)
+
                     session.add(new_event)
 
                 await session.commit()

@@ -18,9 +18,18 @@ asyncio = "*"
 aiohttp = "*"
 asyncpg = "*"
 sqlalchemy = {extras = ["asyncio"], version = "*"}
+sentence-transformers = "*"
+numpy = "*"
+pgvector = "*"
 
 [dev-packages]
 pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
 
 [requires]
 python_version = "3.11"
