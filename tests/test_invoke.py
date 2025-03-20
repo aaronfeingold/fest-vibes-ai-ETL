@@ -18,7 +18,7 @@ class LambdaTestContext:
 
 # Simulated event data
 event = {
-    "queryStringParameters": {"date": "2025-01-18"},
+    "queryStringParameters": {"date": "2025-03-20"},
     "httpMethod": "POST",
     "devEnv": False,
 }

@@ -163,9 +163,7 @@ class Venue(Base):
     state = Column(String)
     postal_code = Column(String)
     full_address = Column(String)
-    wwoz_venue_href = Column(
-        String
-    )  # Changed from wwoz_venue_url to match usage in code
+    wwoz_venue_href = Column(String)
     website = Column(String)
     is_active = Column(Boolean, default=True)
     latitude = Column(Float)
@@ -173,6 +171,7 @@ class Venue(Base):
     capacity = Column(Integer)
     is_indoor = Column(Boolean, default=True)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
+    last_geocoded = Column(DateTime(timezone=True))  # Track when we last geocoded this venue
 
     # Fixed relationships
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
@@ -182,6 +181,15 @@ class Venue(Base):
     @hybrid_property
     def full_url(self):
         return urljoin(SAMPLE_WEBSITE, self.wwoz_venue_href)
+
+    def needs_geocoding(self) -> bool:
+        """Check if venue needs geocoding"""
+        if not self.latitude or not self.longitude:
+            return True
+        if not self.last_geocoded:
+            return True
+        # Re-geocode if it's been more than 30 days
+        return (datetime.now(NEW_ORLEANS_TZ) - self.last_geocoded).days > 30
 
 
 class Artist(Base):
@@ -466,7 +474,8 @@ class DatabaseHandler(Services):
     async def create_tables(self):
         try:
             async with self.engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                await conn.run_sync(Base.metadata.drop_all)  # Drop all tables first
+                await conn.run_sync(Base.metadata.create_all)  # Create all tables
         except SQLAlchemyError as e:
             logger.error(f"Failed to create tables: {str(e)}")
             raise
@@ -513,10 +522,17 @@ class DatabaseHandler(Services):
                             is_active=event.venue_data.is_active,
                             latitude=geolocation["latitude"],
                             longitude=geolocation["longitude"],
+                            last_geocoded=datetime.now(NEW_ORLEANS_TZ),
                             genres=genre_objects,
                         )
                         session.add(venue)
                         await session.flush()  # Ensure venue ID is generated
+                    elif venue.needs_geocoding():
+                        print(f"Re-geocoding venue: {venue.name}")
+                        geolocation = await self.geocode_address(venue.full_address)
+                        venue.latitude = geolocation["latitude"]
+                        venue.longitude = geolocation["longitude"]
+                        venue.last_geocoded = datetime.now(NEW_ORLEANS_TZ)
 
                     # Fetch or create main artist
                     print(f"event.artist_data.name: {event.artist_data.name}")
@@ -570,7 +586,6 @@ class DatabaseHandler(Services):
 
                     # Create event
                     new_event = Event(
-                        event_date=event.event_data.event_date,
                         wwoz_event_href=event.event_data.wwoz_event_href,
                         description=event.event_data.description,
                         artist_id=artist.id,
@@ -842,18 +857,23 @@ class DeepScraper:
         return artist_data
 
     async def get_event_data(
-        self, wwoz_event_href: str, artist_name: str
+        self, wwoz_event_href: str, artist_name: str, event_date: datetime
     ) -> tuple[EventData, ArtistData]:
         """Deep crawl venue page to get additional details"""
         print("running get event data")
         if wwoz_event_href in self.seen_urls:
-            return {}
+            return EventData(
+                event_date=event_date,
+                wwoz_event_href=wwoz_event_href,
+                event_artist=artist_name,
+            ), ArtistData(name=artist_name)
 
         # TODO: CLEAN UP EXCESS VARS
         self.seen_urls.add(wwoz_event_href)
         soup = await self.make_soup(wwoz_event_href)
 
         event_data = EventData(
+            event_date=event_date,
             wwoz_event_href=wwoz_event_href,
             event_artist=artist_name,
         )
@@ -1004,7 +1024,7 @@ class DeepScraper:
                     wwoz_event_href = wwoz_event_link["href"]
                     # use the href to for the event to scrape deeper for more details on artists, and return any
                     event_data, artist_data = await self.get_event_data(
-                        wwoz_event_href, event_artist_name
+                        wwoz_event_href, event_artist_name, datetime.strptime(date_str, "%Y-%m-%d").date()
                     )
                     # Extract time string
                     time_str = calendar_info.find_all("p")[1].text.strip()
