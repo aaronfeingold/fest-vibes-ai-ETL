@@ -24,7 +24,6 @@ from sqlalchemy import (
     ForeignKey,
     Float,
     Interval,
-    Vector,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -36,8 +35,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlalchemy import text
-import numpy as np
 from sentence_transformers import SentenceTransformer
+from pgvector.sqlalchemy import Vector
+
 
 load_dotenv()  # Load variables from .env
 
@@ -483,21 +483,44 @@ class DatabaseHandler(Services):
         """Context manager for handling sessions"""
         session = self.AsyncSession()
         try:
+            logger.info("Starting new database session")
             yield session
+            logger.info("Session yielded, attempting to commit")
             await session.commit()
-        except Exception:
+            logger.info("Session committed successfully")
+        except Exception as e:
+            logger.error(f"Error in database session: {str(e)}")
             await session.rollback()
+            logger.error("Session rolled back due to error")
             raise
         finally:
+            logger.info("Closing database session")
             await session.close()
+            logger.info("Database session closed")
 
     async def create_tables(self):
         try:
             async with self.engine.begin() as conn:
                 # Enable pgvector extension
                 await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
-                await conn.run_sync(Base.metadata.drop_all)
-                await conn.run_sync(Base.metadata.create_all)
+
+                # Check if tables exist
+                result = await conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'events'
+                    )
+                """))
+                tables_exist = result.scalar()
+
+                if not tables_exist:
+                    logger.info("Tables don't exist, creating them...")
+                    await conn.run_sync(Base.metadata.create_all)
+                    logger.info("Tables created successfully")
+                else:
+                    logger.info("Tables already exist, skipping creation")
+
         except SQLAlchemyError as e:
             logger.error(f"Failed to create tables: {str(e)}")
             raise
@@ -521,12 +544,16 @@ class DatabaseHandler(Services):
     async def save_events(self, events: List[EventDTO], scrape_time: date):
         async with self.get_session() as session:
             try:
-                for event in events:
+                logger.info(f"Starting to save {len(events)} events to database")
+                for idx, event in enumerate(events, 1):
+                    logger.info(f"Processing event {idx}/{len(events)}: {event.artist_data.name} at {event.venue_data.name}")
+
                     # Fetch or create genres
                     genre_objects = []
                     for genre_name in event.event_data.genres:
                         genre = await self.get_or_create_genre(session, genre_name)
                         genre_objects.append(genre)
+                    logger.info(f"Created/fetched {len(genre_objects)} genres")
 
                     # Fetch or create venue
                     venue_result = await session.execute(
@@ -535,7 +562,7 @@ class DatabaseHandler(Services):
                     venue = venue_result.scalar_one_or_none()
 
                     if not venue:
-                        print(f"venue name: {event.venue_data.name} not in DB")
+                        logger.info(f"Creating new venue: {event.venue_data.name}")
                         geolocation = await self.geocode_address(
                             event.venue_data.full_address
                         )
@@ -556,16 +583,17 @@ class DatabaseHandler(Services):
                             genres=genre_objects,
                         )
                         session.add(venue)
-                        await session.flush()  # Ensure venue ID is generated
+                        await session.flush()
+                        logger.info(f"Created venue with ID: {venue.id}")
                     elif venue.needs_geocoding():
-                        print(f"Re-geocoding venue: {venue.name}")
+                        logger.info(f"Re-geocoding venue: {venue.name}")
                         geolocation = await self.geocode_address(venue.full_address)
                         venue.latitude = geolocation["latitude"]
                         venue.longitude = geolocation["longitude"]
                         venue.last_geocoded = datetime.now(NEW_ORLEANS_TZ)
 
                     # Fetch or create main artist
-                    print(f"event.artist_data.name: {event.artist_data.name}")
+                    logger.info(f"Processing artist: {event.artist_data.name}")
                     artist_result = await session.execute(
                         select(Artist).filter_by(name=event.artist_data.name)
                     )
@@ -579,25 +607,23 @@ class DatabaseHandler(Services):
                             genres=genre_objects,
                         )
                         session.add(artist)
-                        await session.flush()  # Ensure artist ID is generated
+                        await session.flush()
+                        logger.info(f"Created artist with ID: {artist.id}")
 
-                    # Handle related artists (without direct list appending)
+                    # Handle related artists
                     for related_artist in event.event_data.related_artists:
-                        print(
-                            f"Related artists found for {event.artist_data.name}: {event.event_data.related_artists}"
-                        )
+                        logger.info(f"Processing related artist for {event.artist_data.name}: {related_artist['name']}")
 
                         related_artist_result = await session.execute(
                             select(Artist).filter_by(name=related_artist["name"])
                         )
-                        related_artist_record = (
-                            related_artist_result.scalar_one_or_none()
-                        )
+                        related_artist_record = related_artist_result.scalar_one_or_none()
 
                         if not related_artist_record:
                             related_artist_record = Artist(name=related_artist["name"])
                             session.add(related_artist_record)
                             await session.flush()
+                            logger.info(f"Created related artist with ID: {related_artist_record.id}")
 
                         # Explicitly create artist relations
                         relation_exists = await session.execute(
@@ -613,6 +639,7 @@ class DatabaseHandler(Services):
                                     related_artist_id=related_artist_record.id,
                                 )
                             )
+                            logger.info(f"Created artist relation between {artist.id} and {related_artist_record.id}")
 
                     # Create event
                     new_event = Event(
@@ -628,13 +655,19 @@ class DatabaseHandler(Services):
                     )
 
                     # Generate embeddings for the new event
+                    logger.info("Generating embeddings for event")
                     await self.generate_embeddings_for_event(new_event)
-
                     session.add(new_event)
+                    await session.flush()
+                    logger.info(f"Created event with ID: {new_event.id}")
 
+                logger.info("Committing all changes to database")
                 await session.commit()
+                logger.info("Successfully committed all changes")
             except Exception as e:
+                logger.error(f"Error saving event data to database: {str(e)}")
                 await session.rollback()
+                logger.info("Rolled back database changes due to error")
                 raise DatabaseHandlerError(
                     message=f"Error saving event data to database: {str(e)}",
                     error_type=ErrorType.DATABASE_ERROR,
@@ -674,6 +707,42 @@ class DatabaseHandler(Services):
     async def close(self):
         """Cleanup method to properly close the engine"""
         await self.engine.dispose()
+
+    async def inspect_embeddings(self, limit: int = 5):
+        """Inspect vector embeddings from the database"""
+        async with self.get_session() as session:
+            try:
+                # Query events with non-null embeddings
+                result = await session.execute(
+                    text("""
+                        SELECT id, artist_name, venue_name,
+                               description_embedding::text,
+                               event_text_embedding::text
+                        FROM events
+                        WHERE description_embedding IS NOT NULL
+                           OR event_text_embedding IS NOT NULL
+                        LIMIT :limit
+                    """),
+                    {"limit": limit}
+                )
+
+                rows = result.fetchall()
+                return [
+                    {
+                        "id": row[0],
+                        "artist": row[1],
+                        "venue": row[2],
+                        "description_embedding": row[3],
+                        "event_text_embedding": row[4]
+                    }
+                    for row in rows
+                ]
+            except Exception as e:
+                raise DatabaseHandlerError(
+                    message=f"Error inspecting embeddings: {str(e)}",
+                    error_type=ErrorType.DATABASE_ERROR,
+                    status_code=500,
+                )
 
 
 class DeepScraper:
