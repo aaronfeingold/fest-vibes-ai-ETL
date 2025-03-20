@@ -79,6 +79,16 @@ python main.py
 ```sh
 PYTHONPATH=. pytest tests/test_main.py
 ```
+
+### Python Debugger
+**Python: Select Interpreter**
+
+- Press Cmd+Shift+P (Mac) or Ctrl+Shift+P (Windows/Linux)
+- Type "Python: Select Interpreter"
+- Look for the interpreter that points to your Pipenv virtual environment (it should be something like ~/.local/share/virtualenvs/your-project-name-xxxxx/bin/python)
+
+**Run Python: Pipenv Debug with VSCode's Debugger tool**
+
 ### Docker Image
 - Lambda Invocation:
 ```
