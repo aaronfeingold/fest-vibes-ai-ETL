@@ -3,7 +3,9 @@ import asyncio
 import logging
 import os
 import traceback
-from main import lambda_handler, DatabaseHandler
+from datetime import datetime
+import pytz
+from main import lambda_handler, DatabaseHandler, Utilities
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -38,9 +40,9 @@ class LambdaTestContext:
     remaining_time_in_millis = 30000  # Simulated remaining time
 
 
-# Simulated event data
+# Simulated event data with today's date
 event = {
-    "queryStringParameters": {"date": "2025-03-20"},
+    "queryStringParameters": {"date": Utilities.generate_date_str()},
     "httpMethod": "POST",
     "devEnv": False,
 }
