@@ -175,7 +175,6 @@ class Venue(Base):
     latitude = Column(Float)
     longitude = Column(Float)
     capacity = Column(Integer)
-    is_indoor = Column(Boolean, default=True)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     last_geocoded = Column(DateTime(timezone=True))  # Track when we last geocoded this venue
 
@@ -244,7 +243,8 @@ class Event(Base):
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     is_recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)
-    is_indoors = Column(Boolean)
+    is_indoors = Column(Boolean, default=True)  # Default to indoors
+    is_streaming = Column(Boolean, default=False)
     # Add vector embedding columns
     description_embedding = Column(Vector(384))  # Using all-MiniLM-L6-v2 model
     event_text_embedding = Column(Vector(384))  # Combined text for semantic search
@@ -547,6 +547,12 @@ class DatabaseHandler(Services):
                             genre = await self.get_or_create_genre(session, genre_name)
                             genre_objects.append(genre)
                         logger.info(f"Created/fetched {len(genre_objects)} genres")
+
+                        # Check if event is indoors and/or streaming
+                        venue_name = event.venue_data.name.lower()
+                        is_indoors = "outdoor" not in venue_name
+                        is_streaming = "streaming" in venue_name
+
                         # Upsert venue
                         venue = await session.execute(
                             select(Venue).where(Venue.wwoz_venue_href == event.venue_data.wwoz_venue_href)
@@ -565,7 +571,6 @@ class DatabaseHandler(Services):
                                 state=event.venue_data.state,
                                 postal_code=event.venue_data.postal_code,
                                 full_address=event.venue_data.full_address,
-                                wwoz_venue_href=event.venue_data.wwoz_venue_href,
                                 website=event.venue_data.website,
                                 is_active=event.venue_data.is_active,
                                 latitude=geolocation["latitude"],
@@ -651,6 +656,8 @@ class DatabaseHandler(Services):
                                 performance_time=event.performance_time,
                                 scrape_time=scrape_time,
                                 genres=genre_objects,
+                                is_indoors=is_indoors,
+                                is_streaming=is_streaming,
                             )
                             session.add(new_event)
                             await session.flush()
