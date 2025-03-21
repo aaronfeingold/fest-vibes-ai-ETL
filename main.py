@@ -415,25 +415,45 @@ class Services:
         self.base_url = "https://maps.googleapis.com/maps/api/geocode/json"
 
     async def geocode_address(self, address: str) -> dict:
+        default_NOLA_coords = {
+            "latitude": 29.9511,
+            "longitude": -90.0715,
+        }
+        # Check if address is empty or for streaming events
+        if not address or address.strip() == "" or ".Streaming" in address:
+            logger.info(
+                f"Address is empty or for streaming event: {address=}. Using default coordinates."
+            )
+            # Return default coordinates (could be New Orleans center coordinates)
+            return default_NOLA_coords
+
         logger.info(f"Geocoding {address=}")
         params = {"address": address, "key": self.api_key}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(self.base_url, params=params) as response:
-                data = await response.json()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url, params=params) as response:
+                    data = await response.json()
 
-                if data["status"] == "OK":
-                    result = data["results"][0]
-                    lat = result["geometry"]["location"]["lat"]
-                    lng = result["geometry"]["location"]["lng"]
+                    if data["status"] == "OK":
+                        result = data["results"][0]
+                        lat = result["geometry"]["location"]["lat"]
+                        lng = result["geometry"]["location"]["lng"]
 
-                    return {"latitude": lat, "longitude": lng}
-                else:
-                    raise ScrapingError(
-                        message=f"Geocoding failed: {data['status']} - {data.get('error_message')}",
-                        error_type=ErrorType.GOOGLE_MAPS_API_ERROR,
-                        status_code=500,
-                    )
+                        return {"latitude": lat, "longitude": lng}
+                    else:
+                        logger.warning(
+                            f"Geocoding failed: {data['status']} - "
+                            f"{data.get('error_message')}. Using default coordinates."
+                        )
+                        # Return default coordinates instead of raising an error
+                        return default_NOLA_coords
+        except Exception as e:
+            logger.warning(
+                f"Exception during geocoding: {str(e)}. Using default coordinates."
+            )
+            # Return default coordinates instead of raising an error
+            return default_NOLA_coords
 
 
 class DatabaseHandler(Services):
