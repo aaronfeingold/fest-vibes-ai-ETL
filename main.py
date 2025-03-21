@@ -256,18 +256,6 @@ class Event(Base):
     def full_url(self):
         return urljoin(SAMPLE_WEBSITE, self.wwoz_event_href)
 
-    def generate_embeddings(self):
-        """Generate embeddings for the event description and combined text"""
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-
-        # Generate description embedding
-        if self.description:
-            self.description_embedding = model.encode(self.description)
-
-        # Generate combined text embedding for semantic search
-        combined_text = f"{self.artist_name} {self.venue_name} {self.description or ''}"
-        self.event_text_embedding = model.encode(combined_text)
-
 
 class Genre(Base):
     __tablename__ = "genres"
