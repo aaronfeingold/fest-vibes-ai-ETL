@@ -37,6 +37,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sentence_transformers import SentenceTransformer
 from pgvector.sqlalchemy import Vector
+import boto3
 
 
 load_dotenv()  # Load variables from .env
@@ -1197,6 +1198,10 @@ class DeepScraper:
 
 
 class FileHandler:
+    def __init__(self):
+        self.s3_client = boto3.client('s3')
+        self.s3_bucket = os.getenv('S3_BUCKET_NAME', 'ajf-live-re-wire-data')
+
     @staticmethod
     async def save_events_local(
         events: List[EventDTO], filename: Optional[str] = None
@@ -1227,12 +1232,44 @@ class FileHandler:
 
         return str(filepath)
 
+    async def upload_to_s3(self, filepath: str) -> str:
+        """
+        Upload a file to S3 bucket.
+        Returns the S3 URL of the uploaded file.
+        """
+        try:
+            # Get just the filename from the full path
+            filename = Path(filepath).name
+
+            # Create a unique key for S3 using timestamp and filename
+            timestamp = datetime.now().strftime("%Y/%m/%d")
+            s3_key = f"raw_events/{timestamp}/{filename}"
+
+            logger.info(f"Uploading {filepath} to S3 bucket {self.s3_bucket} with key {s3_key}")
+
+            # Upload the file
+            self.s3_client.upload_file(
+                filepath,
+                self.s3_bucket,
+                s3_key,
+                ExtraArgs={'ContentType': 'application/json'}
+            )
+
+            # Generate the S3 URL
+            s3_url = f"s3://{self.s3_bucket}/{s3_key}"
+            logger.info(f"Successfully uploaded file to {s3_url}")
+
+            return s3_url
+
+        except Exception as e:
+            logger.error(f"Error uploading file to S3: {str(e)}")
+            raise
+
     @staticmethod
     async def load_events_local() -> List[EventDTO]:
         """
         Load events from a local JSON file for development purposes.
         """
-
         data_dir = Path(__file__).resolve().parent / "data"
         # Get the most recently created file in the data directory
         latest_file = max(data_dir.glob("*.json"), key=os.path.getctime)
@@ -1342,8 +1379,16 @@ class Controllers(Utilities):
                 events = await deep_scraper.run(params)
                 logger.info("save JSON output to file")
                 # save JSON output to file for debugging
-                # TODO: use if then logic for prod to write to S3 for back-testing
-                await Utilities.save_events_local(events)
+                file_handler = FileHandler()
+                filepath = await file_handler.save_events_local(events)
+
+                # Upload to S3 if not in dev environment
+                try:
+                    s3_url = await file_handler.upload_to_s3(filepath)
+                    logger.info(f"Successfully uploaded event data to S3: {s3_url}")
+                except Exception as e:
+                    logger.error(f"Failed to upload to S3: {str(e)}")
+                    # Continue execution even if S3 upload fails
             else:
                 # in development, load events from file for debugging
                 events = await Utilities.load_events_local()
@@ -1354,8 +1399,6 @@ class Controllers(Utilities):
             await db_handler.save_events(events, scrape_time)
             logger.info("finished saving events to DB")
 
-            # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
-            # for now, just return the List of EventDTOs
             return Utilities.generate_response(
                 200,
                 {
