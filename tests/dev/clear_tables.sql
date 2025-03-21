@@ -5,6 +5,9 @@ SET session_replication_role = 'replica';
 TRUNCATE TABLE
     event_genres,
     artist_relations,
+    artist_genres,
+    venue_artists,
+    venue_genres,
     events,
     artists,
     venues,
