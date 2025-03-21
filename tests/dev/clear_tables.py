@@ -9,6 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 async def clear_tables():
     """Clear all tables in the database"""
     try:
@@ -18,7 +19,7 @@ async def clear_tables():
         logger.info("Clearing all tables...")
         async with db.get_session() as session:
             # Read the SQL file
-            with open('tests/clear_tables.sql', 'r') as file:
+            with open("tests/dev/clear_tables.sql", "r") as file:
                 sql_commands = file.read()
 
             # Execute each command
