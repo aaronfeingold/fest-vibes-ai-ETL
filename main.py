@@ -767,7 +767,12 @@ class DeepScraper:
         base_url: str = SAMPLE_WEBSITE,
     ) -> str:
         try:
-            return urljoin(base_url, endpoint, "?" + urlencode(params))
+            # First join the base URL with the endpoint
+            url = urljoin(base_url, endpoint)
+            # Then add query parameters if they exist
+            if params:
+                url = f"{url}?{urlencode(params)}"
+            return url
         except (TypeError, Exception) as e:
             raise ScrapingError(
                 message=f"Failed to create URL: {e}",
