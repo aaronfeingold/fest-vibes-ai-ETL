@@ -569,7 +569,10 @@ class DatabaseHandler(Services):
                         genre = await self.get_or_create_genre(session, genre_name)
                         genre_objects.append(genre)
                     logger.info(f"Created/fetched {len(genre_objects)} genres")
-
+                    # Check if event is indoors and/or streaming
+                    venue_name = event.venue_data.name.lower()
+                    is_indoors = "outdoor" not in venue_name
+                    is_streaming = "streaming" in venue_name
                     # Fetch or create venue
                     venue_result = await session.execute(
                         select(Venue).filter_by(name=event.venue_data.name)
@@ -675,6 +678,8 @@ class DatabaseHandler(Services):
                         performance_time=event.performance_time,
                         scrape_time=scrape_time,
                         genres=genre_objects,
+                        is_indoors=is_indoors,
+                        is_streaming=is_streaming,
                     )
 
                     # Generate embeddings for the new event
