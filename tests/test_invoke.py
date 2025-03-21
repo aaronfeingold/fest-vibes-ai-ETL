@@ -3,7 +3,7 @@ import asyncio
 import logging
 import os
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from main import lambda_handler, DatabaseHandler, Utilities
 from dotenv import load_dotenv
@@ -40,12 +40,32 @@ class LambdaTestContext:
     remaining_time_in_millis = 30000  # Simulated remaining time
 
 
-# Simulated event data with today's date
-event = {
-    "queryStringParameters": {"date": Utilities.generate_date_str()},
-    "httpMethod": "POST",
-    "devEnv": False,
-}
+async def scrape_for_date(date_str: str):
+    """Scrape events for a specific date"""
+    event = {
+        "queryStringParameters": {"date": date_str},
+        "httpMethod": "POST",
+        "devEnv": False,
+    }
+
+    logger.info(f"Scraping for date: {date_str}")
+    result = await lambda_handler(event, LambdaTestContext())
+    logger.info(f"Scrape result for {date_str}: {json.dumps(result, indent=2)}")
+    return result
+
+
+async def scrape_next_week():
+    """Scrape events for today and the next 7 days"""
+    today = datetime.now(pytz.timezone("America/Chicago")).date()
+
+    for days_ahead in range(8):  # Today + 7 days
+        target_date = today + timedelta(days=days_ahead)
+        date_str = target_date.strftime("%Y-%m-%d")
+        await scrape_for_date(date_str)
+
+        # Add a small delay between requests to avoid overwhelming the server
+        if days_ahead < 7:  # Don't delay after the last request
+            await asyncio.sleep(1)
 
 
 async def check_database():
@@ -87,8 +107,9 @@ async def check_database():
 async def test_lambda_handler():
     try:
         logger.info("Starting lambda handler test...")
-        result = await lambda_handler(event, LambdaTestContext())
-        print(json.dumps(result, indent=4))
+
+        # Scrape for today and the next 7 days
+        await scrape_next_week()
 
         # Check the database after saving
         logger.info("Checking database for saved events...")
