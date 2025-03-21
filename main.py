@@ -536,14 +536,27 @@ class DatabaseHandler(Services):
         saved_events = []
         try:
             async with self.get_session() as session:
-                for event in events:
+                for idx, event in enumerate(events, 1):
                     try:
+                        logger.info(
+                            f"Processing event {idx}/{len(events)}: {event.artist_data.name} at {event.venue_data.name}"
+                        )
+                        # Fetch or create genres
+                        genre_objects = []
+                        for genre_name in event.event_data.genres:
+                            genre = await self.get_or_create_genre(session, genre_name)
+                            genre_objects.append(genre)
+                        logger.info(f"Created/fetched {len(genre_objects)} genres")
                         # Upsert venue
                         venue = await session.execute(
                             select(Venue).where(Venue.wwoz_venue_href == event.venue_data.wwoz_venue_href)
                         )
                         venue = venue.scalar_one_or_none()
                         if not venue:
+                            logger.info(f"Creating new venue: {event.venue_data.name}")
+                            geolocation = await self.geocode_address(
+                                event.venue_data.full_address
+                            )
                             venue = Venue(
                                 wwoz_venue_href=event.venue_data.wwoz_venue_href,
                                 name=event.venue_data.name,
@@ -551,18 +564,20 @@ class DatabaseHandler(Services):
                                 locality=event.venue_data.locality,
                                 state=event.venue_data.state,
                                 postal_code=event.venue_data.postal_code,
+                                full_address=event.venue_data.full_address,
+                                wwoz_venue_href=event.venue_data.wwoz_venue_href,
+                                website=event.venue_data.website,
+                                is_active=event.venue_data.is_active,
+                                latitude=geolocation["latitude"],
+                                longitude=geolocation["longitude"],
+                                last_geocoded=datetime.now(NEW_ORLEANS_TZ),
+                                genres=genre_objects,
                             )
                             session.add(venue)
                             await session.flush()
-                        else:
-                            # Update venue details if they've changed
-                            venue.name = event.venue_data.name
-                            venue.thoroughfare = event.venue_data.thoroughfare
-                            venue.locality = event.venue_data.locality
-                            venue.state = event.venue_data.state
-                            venue.postal_code = event.venue_data.postal_code
 
                         # Upsert artist
+                        logger.info(f"Processing artist: {event.artist_data.name}")
                         artist = await session.execute(
                             select(Artist).where(Artist.wwoz_artist_href == event.artist_data.wwoz_artist_href)
                         )
@@ -571,26 +586,52 @@ class DatabaseHandler(Services):
                             artist = Artist(
                                 wwoz_artist_href=event.artist_data.wwoz_artist_href,
                                 name=event.artist_data.name,
-                                genres=[],
+                                description=event.artist_data.description,
+                                genres=genre_objects,
                             )
                             session.add(artist)
                             await session.flush()
-                        else:
-                            # Update artist name if it's changed
-                            artist.name = event.artist_data.name
+                            logger.info(f"Created artist with ID: {artist.id}")
 
-                        # Upsert genres
-                        genre_objects = []
-                        for genre_name in event.artist_data.genres:
-                            genre = await session.execute(
-                                select(Genre).where(func.lower(Genre.name) == genre_name.lower())
+                        for related_artist in event.event_data.related_artists:
+                            logger.info(
+                                f"Processing related artist for {event.artist_data.name}: {related_artist['name']}"
                             )
-                            genre = genre.scalar_one_or_none()
-                            if not genre:
-                                genre = Genre(name=genre_name)
-                                session.add(genre)
+
+                            related_artist_result = await session.execute(
+                                select(Artist).filter_by(name=related_artist["name"])
+                            )
+                            related_artist_record = (
+                                related_artist_result.scalar_one_or_none()
+                            )
+
+                            if not related_artist_record:
+                                related_artist_record = Artist(
+                                    name=related_artist["name"]
+                                )
+                                session.add(related_artist_record)
                                 await session.flush()
-                            genre_objects.append(genre)
+                                logger.info(
+                                    f"Created related artist with ID: {related_artist_record.id}"
+                                )
+
+                            # Explicitly create artist relations
+                            relation_exists = await session.execute(
+                                select(ArtistRelation).filter_by(
+                                    artist_id=artist.id,
+                                    related_artist_id=related_artist_record.id,
+                                )
+                            )
+                            if relation_exists.scalar_one_or_none() is None:
+                                session.add(
+                                    ArtistRelation(
+                                        artist_id=artist.id,
+                                        related_artist_id=related_artist_record.id,
+                                    )
+                                )
+                                logger.info(
+                                    f"Created artist relation between {artist.id} and {related_artist_record.id}"
+                                )
 
                         # Upsert event
                         existing_event = await session.execute(
@@ -598,22 +639,7 @@ class DatabaseHandler(Services):
                         )
                         existing_event = existing_event.scalar_one_or_none()
 
-                        if existing_event:
-                            # Update existing event
-                            existing_event.description = event.event_data.description
-                            existing_event.artist_id = artist.id
-                            existing_event.venue_id = venue.id
-                            existing_event.artist_name = event.artist_data.name
-                            existing_event.venue_name = event.venue_data.name
-                            existing_event.performance_time = event.performance_time
-                            existing_event.end_time = event.event_data.end_time
-                            existing_event.scrape_time = scrape_time
-                            existing_event.is_recurring = event.event_data.is_recurring
-                            existing_event.recurrence_pattern = event.event_data.recurrence_pattern
-                            existing_event.is_indoors = event.event_data.is_indoors
-                            existing_event.genres = genre_objects
-                            saved_events.append(existing_event)
-                        else:
+                        if not existing_event:
                             # Create new event
                             new_event = Event(
                                 wwoz_event_href=event.event_data.wwoz_event_href,
@@ -623,11 +649,7 @@ class DatabaseHandler(Services):
                                 artist_name=event.artist_data.name,
                                 venue_name=event.venue_data.name,
                                 performance_time=event.performance_time,
-                                end_time=event.event_data.end_time,
                                 scrape_time=scrape_time,
-                                is_recurring=event.event_data.is_recurring,
-                                recurrence_pattern=event.event_data.recurrence_pattern,
-                                is_indoors=event.event_data.is_indoors,
                                 genres=genre_objects,
                             )
                             session.add(new_event)
