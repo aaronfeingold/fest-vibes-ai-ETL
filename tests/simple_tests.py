@@ -1,6 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-import json
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, date
 from main import (
     DeepScraper,
@@ -36,6 +35,7 @@ MOCK_HTML = """
 </html>
 """
 
+
 # Test Utility functions first (simple, no async)
 def test_generate_response():
     """Test the generate_response function"""
@@ -45,6 +45,7 @@ def test_generate_response():
     assert response["headers"]["Content-Type"] == "application/json"
     assert response["body"]["status"] == "success"
     assert response["body"]["data"] == "test"
+
 
 def test_validate_params():
     """Test the validate_params function"""
@@ -59,6 +60,7 @@ def test_validate_params():
     assert "date" in result
     assert len(result["date"]) == 10  # YYYY-MM-DD format
 
+
 # Test basic scraper methods with mocked responses
 @pytest.mark.asyncio
 async def test_generate_url():
@@ -66,6 +68,7 @@ async def test_generate_url():
     scraper = DeepScraper()
     url = scraper.generate_url({"date": "2025-03-21"})
     assert "date=2025-03-21" in url
+
 
 @pytest.mark.asyncio
 async def test_fetch_html_success():
@@ -143,6 +146,7 @@ async def test_fetch_html_failure():
 
     assert excinfo.value.error_type == ErrorType.HTTP_ERROR
 
+
 @pytest.mark.asyncio
 async def test_parse_event_performance_time():
     """Test parsing event performance time"""
@@ -161,6 +165,7 @@ async def test_parse_event_performance_time():
     result = scraper.parse_event_performance_time(date_str, time_str)
     assert result.hour == 9
     assert result.minute == 30
+
 
 # Test data structures
 def test_event_dto_creation():
@@ -190,6 +195,7 @@ def test_event_dto_creation():
     assert event_dto.event_data.event_artist == "Test Artist"
     assert event_dto.performance_time == performance_time
     assert event_dto.scrape_time == scrape_time
+
 
 # Integration tests with more thorough mocking
 @pytest.mark.asyncio
@@ -252,6 +258,7 @@ async def test_simplified_parse_html():
     # Verify the mock methods were called
     scraper.get_venue_data.assert_called_once()
     scraper.get_event_data.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_create_events_controller():
