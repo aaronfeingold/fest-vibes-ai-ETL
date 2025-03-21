@@ -17,7 +17,7 @@ requests = "*"
 asyncio = "*"
 aiohttp = "*"
 asyncpg = "*"
-sqlalchemy = {extras = ["asyncio"], version = "*"}
+sqlalchemy = {extras = ["asyncio"] }
 sentence-transformers = "*"
 numpy = "*"
 pgvector = "*"
@@ -30,6 +30,7 @@ black = "*"
 isort = "*"
 flake8 = "*"
 mypy = "*"
+pytest-mock = "*"
 
 [requires]
 python_version = "3.11"
