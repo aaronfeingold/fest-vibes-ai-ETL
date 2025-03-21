@@ -37,8 +37,6 @@ from pathlib import Path
 from sqlalchemy import text
 from sentence_transformers import SentenceTransformer
 from pgvector.sqlalchemy import Vector
-from sqlalchemy.sql import func
-import traceback
 
 
 load_dotenv()  # Load variables from .env
@@ -666,28 +664,35 @@ class DatabaseHandler(Services):
                             logger.info(
                                 f"Created artist relation between {artist.id} and {related_artist_record.id}"
                             )
-
-                    # Create event
-                    new_event = Event(
-                        wwoz_event_href=event.event_data.wwoz_event_href,
-                        description=event.event_data.description,
-                        artist_id=artist.id,
-                        venue_id=venue.id,
-                        artist_name=event.artist_data.name,
-                        venue_name=event.venue_data.name,
-                        performance_time=event.performance_time,
-                        scrape_time=scrape_time,
-                        genres=genre_objects,
-                        is_indoors=is_indoors,
-                        is_streaming=is_streaming,
+                    # Upsert event
+                    existing_event = await session.execute(
+                        select(Event).where(
+                            Event.wwoz_event_href == event.event_data.wwoz_event_href
+                        )
                     )
+                    existing_event = existing_event.scalar_one_or_none()
 
-                    # Generate embeddings for the new event
-                    logger.info("Generating embeddings for event")
-                    await self.generate_embeddings_for_event(new_event)
-                    session.add(new_event)
-                    await session.flush()
-                    logger.info(f"Created event with ID: {new_event.id}")
+                    if not existing_event:
+                        new_event = Event(
+                            wwoz_event_href=event.event_data.wwoz_event_href,
+                            description=event.event_data.description,
+                            artist_id=artist.id,
+                            venue_id=venue.id,
+                            artist_name=event.artist_data.name,
+                            venue_name=event.venue_data.name,
+                            performance_time=event.performance_time,
+                            scrape_time=scrape_time,
+                            genres=genre_objects,
+                            is_indoors=is_indoors,
+                            is_streaming=is_streaming,
+                        )
+
+                        # Generate embeddings for the new event
+                        logger.info("Generating embeddings for event")
+                        await self.generate_embeddings_for_event(new_event)
+                        session.add(new_event)
+                        await session.flush()
+                        logger.info(f"Created event with ID: {new_event.id}")
 
                 logger.info("Committing all changes to database")
                 await session.commit()
@@ -1346,7 +1351,7 @@ class Controllers(Utilities):
             # Save to database
             logger.info("running DatabaseHandler.save_events")
             db_handler = await DatabaseHandler.create()
-            saved_events = await db_handler.save_events(events, scrape_time)
+            await db_handler.save_events(events, scrape_time)
             logger.info("finished saving events to DB")
 
             # TODO: INTEGRATE WITH AWS TO STORE RAW DATA IN S3 FOR BACK TESTING
@@ -1355,7 +1360,7 @@ class Controllers(Utilities):
                 200,
                 {
                     "status": "success",
-                    "data": json.dumps(saved_events, cls=EventDTOEncoder),
+                    "data": json.dumps(events, cls=EventDTOEncoder),
                     "scrape_time": scrape_time.strftime(WWOZ_DATE_FORMAT),
                     **aws_info,
                 },
