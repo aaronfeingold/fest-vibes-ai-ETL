@@ -8,7 +8,7 @@ import redis
 from botocore.exceptions import ClientError
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin, urlencode
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pytz
 from typing import Dict, Any, List, TypedDict, Union, Optional
 from enum import Enum
@@ -1203,12 +1203,31 @@ class FileHandler:
         self.s3_bucket = os.getenv('S3_BUCKET_NAME', 'ajf-live-re-wire-data')
 
     @staticmethod
+    def sanitize_filename(filename: str) -> str:
+        """
+        Sanitize filename to prevent path traversal and injection attacks.
+        """
+        # Remove any path traversal attempts
+        filename = filename.replace('../', '').replace('..\\', '')
+        # Remove any non-alphanumeric characters except - and _
+        filename = re.sub(r'[^a-zA-Z0-9\-_]', '', filename)
+        return filename
+
+    @staticmethod
     async def save_events_local(
-        events: List[EventDTO], filename: Optional[str] = None
+        events: List[EventDTO],
+        *,
+        date_str: Optional[str] = None,
+        filename: Optional[str] = None,
     ) -> str:
         """
         Save events to a local JSON file for development purposes.
         Creates a 'data' directory in the project root if it doesn't exist.
+
+        Args:
+            events: List of EventDTO objects to save
+            date_str: Optional date string to include in filename
+            filename: Optional custom filename to use
         """
         print("running save_events_local")
         # Setup data directory in project root
@@ -1218,13 +1237,28 @@ class FileHandler:
         # Generate or use provided filename
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"event_data_{timestamp}.json"
+            if date_str:
+                # Sanitize the date_str before using it in filename
+                safe_date = FileHandler.sanitize_filename(date_str)
+                filename = f"event_data_{safe_date}_{timestamp}.json"
+            else:
+                filename = f"event_data_{timestamp}.json"
+        else:
+            # Sanitize any provided filename
+            filename = FileHandler.sanitize_filename(filename)
 
         # Ensure .json extension
         if not filename.endswith(".json"):
             filename += ".json"
 
+        # Ensure the final path is within the data directory
         filepath = data_dir / filename
+        try:
+            # Verify the filepath is within the data directory
+            filepath.resolve().relative_to(data_dir.resolve())
+        except ValueError:
+            raise ValueError("Invalid file path - attempted path traversal")
+
         print(f"{filepath=}")
         # Save to file
         with filepath.open("w", encoding="utf-8") as f:
@@ -1337,7 +1371,6 @@ class Utilities(FileHandler):
     @staticmethod
     def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
         # validate the date parameter (only 1 parameter is expected as of now)
-        # TODO: abstract logic per parameter
         logger.info("Validating query string parameters")
         date_param = query_string_params.get("date")
         if date_param:
@@ -1380,7 +1413,11 @@ class Controllers(Utilities):
                 logger.info("save JSON output to file")
                 # save JSON output to file for debugging
                 file_handler = FileHandler()
-                filepath = await file_handler.save_events_local(events)
+                filepath = await file_handler.save_events_local(
+                    events=events,
+                    date_str=params["date"]
+                )
+                logger.info(f"Saved event data to file: {filepath}")
 
                 # Upload to S3 if not in dev environment
                 try:
