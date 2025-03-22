@@ -5,7 +5,7 @@ import os
 import traceback
 from datetime import datetime, timedelta
 import pytz
-from main import lambda_handler, DatabaseHandler, Utilities
+from main import lambda_handler, DatabaseHandler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -76,7 +76,7 @@ async def check_database():
         db = await DatabaseHandler.create()
         logger.info("Database handler created successfully")
 
-        async with db.get_session() as session:
+        async with db.get_session():
             logger.info("Checking for events with embeddings...")
             try:
                 embeddings = await db.inspect_embeddings(limit=5)
