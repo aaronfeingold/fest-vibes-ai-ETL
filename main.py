@@ -8,7 +8,7 @@ import redis
 from botocore.exceptions import ClientError
 from urllib.error import URLError, HTTPError
 from urllib.parse import urljoin, urlencode
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 import pytz
 from typing import Dict, Any, List, TypedDict, Union, Optional
 from enum import Enum
@@ -1371,6 +1371,7 @@ class Utilities(FileHandler):
     @staticmethod
     def validate_params(query_string_params: Dict[str, str] = {}) -> Dict[str, str]:
         # validate the date parameter (only 1 parameter is expected as of now)
+        # TODO: abstract logic per parameter
         logger.info("Validating query string parameters")
         date_param = query_string_params.get("date")
         if date_param:
