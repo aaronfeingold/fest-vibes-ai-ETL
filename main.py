@@ -1144,10 +1144,10 @@ class DeepScraper:
                 print(f"venue name: {venue_name}")
                 # get wwoz's venue href from the venue name
                 wwoz_venue_href = panel_title.find("a")["href"]
-                # use href to get details, and return the oringal href in the venue data
+                # use href to get details, and return the original href in the venue data
                 # TODO: If venue not in DB, get info about it
                 # TODO: else if last updated over 1 month, get updated info
-                # TODO: for now, just get the venue details to protoype
+                # TODO: for now, just get the venue details to prototype
                 venue_data = await self.get_venue_data(wwoz_venue_href, venue_name)
                 # find the panel's body to ensure we are only dealing with the correct rows
                 panel_body = panel.find("div", class_="panel-body")
