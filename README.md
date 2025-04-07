@@ -95,7 +95,14 @@ PYTHONPATH=. pytest tests/test_main.py
 # build and tag locally
 docker build --target dev -t ajf-live-re-wire:dev .
 # create new container from latest dev build
-docker run ajf-live-re-wire:dev
+docker run \
+  -v ~/.aws:/root/.aws \
+  -e PG_DATABASE_URL=postgresql://{username}:{password}@localhost:{db_port}/{db_name} \
+  -e BASE_URL="https://www.wwoz.org" \
+  -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
+  -e S3_BUCKET_NAME=your-data-bucket-name \
+  --network host \
+  ajf-live-re-wire:dev
 ```
 
 
