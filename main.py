@@ -1346,6 +1346,67 @@ class FileHandler:
         return [dict_to_event(event) for event in data]
 
 
+class RedisCacheHandler:
+    def __init__(self):
+        self.redis_client = redis.Redis(
+            host=os.getenv('REDIS_URL', 'localhost'),
+            port=6379,
+            decode_responses=True
+        )
+        # Set TTLs for different date ranges
+        self.ttls = {
+            'today': 3600,  # 1 hour for today's events
+            'tomorrow': 7200,  # 2 hours for tomorrow's events
+            'week': 86400,  # 24 hours for this week's events
+            'next_week': 172800  # 48 hours for next week's events
+        }
+
+    def _get_cache_key(self, date_str: str) -> str:
+        """Generate a cache key for a specific date"""
+        return f"events:{date_str}"
+
+    async def cache_events(self, date_str: str, events: List[EventDTO]) -> None:
+        """Cache events for a specific date with appropriate TTL"""
+        cache_key = self._get_cache_key(date_str)
+        events_json = json.dumps(events, cls=EventDTOEncoder)
+
+        # Determine TTL based on how far in the future the date is
+        event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        days_diff = (event_date - today).days
+
+        if days_diff == 0:
+            ttl = self.ttls['today']
+        elif days_diff == 1:
+            ttl = self.ttls['tomorrow']
+        elif days_diff <= 7:
+            ttl = self.ttls['week']
+        else:
+            ttl = self.ttls['next_week']
+
+        self.redis_client.setex(cache_key, ttl, events_json)
+        logger.info(f"Cached events for {date_str} with TTL {ttl} seconds")
+
+    async def get_cached_events(self, date_str: str) -> Optional[List[EventDTO]]:
+        """Retrieve cached events for a specific date"""
+        cache_key = self._get_cache_key(date_str)
+        cached_data = self.redis_client.get(cache_key)
+
+        if cached_data:
+            logger.info(f"Cache hit for {date_str}")
+            events_data = json.loads(cached_data)
+            return [EventDTO(**event) for event in events_data]
+
+        logger.info(f"Cache miss for {date_str}")
+        return None
+
+    async def clear_cache(self, date_str: str) -> None:
+        """Clear cache for a specific date"""
+        cache_key = self._get_cache_key(date_str)
+        self.redis_client.delete(cache_key)
+        logger.info(f"Cleared cache for {date_str}")
+
+
 class Utilities(FileHandler):
     def __init__(self):
         super().__init__()
@@ -1412,6 +1473,7 @@ class Utilities(FileHandler):
 class Controllers(Utilities):
     def __init__(self):
         super().__init__()
+        self.redis_cache = RedisCacheHandler()
 
     @staticmethod
     async def create_events(
@@ -1427,6 +1489,10 @@ class Controllers(Utilities):
                 logger.info("running DeepScraper")
                 deep_scraper = DeepScraper()
                 events = await deep_scraper.run(params)
+
+                # Cache the events in Redis
+                await self.redis_cache.cache_events(params["date"], events)
+
                 logger.info("save JSON output to file")
                 # save JSON output to file for debugging
                 file_handler = FileHandler()
@@ -1538,30 +1604,54 @@ class Controllers(Utilities):
             if db_handler:  # Only close if db_handler was successfully initialized
                 await db_handler.close()
 
-    # TODO: redis should be used first, then fallback to postgres
     @staticmethod
-    async def get_events(use_redis: bool = False) -> ResponseType:
-        # TODO: Integrate Cache Pipeline
-        # Connect to Redis
-        if use_redis:
-            redis_client = redis.StrictRedis(
-                host="redis-host", port=6379, decode_responses=True
-            )
-            cached_data = redis_client.get("latest_data")
+    async def get_events(date_str: Optional[str] = None) -> ResponseType:
+        """Get events, trying Redis cache first, then falling back to database"""
+        try:
+            # If no date specified, use today's date
+            if not date_str:
+                date_str = datetime.now(NEW_ORLEANS_TZ).strftime("%Y-%m-%d")
 
-            if cached_data:
-                # Return cached data
-                return {"statusCode": 200, "body": cached_data}
-        else:
-            # Fallback to Postgres
-            # For PROTOTYPE we will read from db
+            # Try Redis cache first
+            redis_cache = RedisCacheHandler()
+            cached_events = await redis_cache.get_cached_events(date_str)
+
+            if cached_events:
+                logger.info(f"Returning cached events for {date_str}")
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps({
+                        "status": "success",
+                        "data": cached_events,
+                        "source": "cache"
+                    })
+                }
+
+            # If not in cache, get from database
+            logger.info(f"Cache miss for {date_str}, fetching from database")
             db_handler = await DatabaseHandler.create()
-            events = await db_handler.get_events()
+            events = await db_handler.get_events(date_str)
 
-            # Cache the data again
-            redis_client.set("latest_data", json.dumps(events))
+            # Cache the results for future requests
+            await redis_cache.cache_events(date_str, events)
 
-            return {"statusCode": 200, "body": json.dumps(events)}
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "status": "success",
+                    "data": events,
+                    "source": "database"
+                })
+            }
+        except Exception as e:
+            logger.error(f"Error getting events: {str(e)}")
+            return {
+                "statusCode": 500,
+                "body": json.dumps({
+                    "status": "error",
+                    "error": str(e)
+                })
+            }
 
 
 async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> ResponseType:
