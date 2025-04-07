@@ -17,6 +17,12 @@ COPY . .
 
 # Development stage
 FROM base AS dev
+# Set environment variables for local development with placeholders
+ENV PG_DATABASE_URL=postgresql://aaronfeingold@host.docker.internal:5432/ajf_dev \
+    BASE_URL=http://localhost:3000 \
+    GOOGLE_MAPS_API_KEY="" \
+    S3_BUCKET_NAME=ajf-live-re-wire-data-dev
+
 # Copy the test script
 COPY tests/test_invoke.py .
 # Set entrypoint for development/testing
@@ -24,5 +30,12 @@ ENTRYPOINT ["python3", "test_invoke.py"]
 
 # Production stage
 FROM base AS prod
+# In production, these will be set by AWS Lambda environment variables
+# Sensitive values should be retrieved from AWS Secrets Manager
+ENV PG_DATABASE_URL="" \
+    BASE_URL="" \
+    GOOGLE_MAPS_API_KEY="" \
+    S3_BUCKET_NAME=""
+
 # Set entrypoint for production
 CMD ["main.lambda_handler"]
