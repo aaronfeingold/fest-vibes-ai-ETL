@@ -1214,6 +1214,19 @@ class FileHandler:
         return filename
 
     @staticmethod
+    async def cleanup_local_files(filepath: str) -> None:
+        """
+        Clean up local files after they've been uploaded to S3.
+        """
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                logger.info(f"Successfully cleaned up local file: {filepath}")
+        except Exception as e:
+            logger.error(f"Error cleaning up local file {filepath}: {str(e)}")
+            # Don't raise the error - we don't want cleanup failures to affect the main flow
+
+    @staticmethod
     async def save_events_local(
         events: List[EventDTO],
         *,
@@ -1292,6 +1305,9 @@ class FileHandler:
             # Generate the S3 URL
             s3_url = f"s3://{self.s3_bucket}/{s3_key}"
             logger.info(f"Successfully uploaded file to {s3_url}")
+
+            # Clean up the local file after successful upload
+            await self.cleanup_local_files(filepath)
 
             return s3_url
 
