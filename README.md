@@ -96,20 +96,96 @@ PYTHONPATH=. pytest tests/test_main.py
 docker build --target dev -t ajf-live-re-wire:dev .
 # create new container from latest dev build
 docker run \
+  --network host \
   -v ~/.aws:/root/.aws \
   -e PG_DATABASE_URL=postgresql://{username}:{password}@localhost:{db_port}/{db_name} \
   -e BASE_URL="https://www.wwoz.org" \
   -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
   -e S3_BUCKET_NAME=your-data-bucket-name \
-  --network host \
+  # For local Redis:
+  -e REDIS_URL=redis://localhost:6379 \
+  # For Heroku Redis:
+  # -e REDIS_URL=redis://username:password@hostname:port \
   ajf-live-re-wire:dev
 ```
 
+#### Redis Configuration for Local Development
 
-# Deployment
-## Under Construction: Github Actions
+1. **Configure Redis to Accept External Connections**
+   ```bash
+   # Edit Redis configuration
+   sudo nano /etc/redis/redis.conf
+   
+   # Find and modify the bind line to:
+   bind 0.0.0.0
+   
+   # Restart Redis
+   sudo systemctl restart redis
+   ```
 
-## Beta User Manual
+2. **Verify Redis is Running**
+   ```bash
+   # Check Redis status
+   sudo systemctl status redis
+   
+   # Test Redis connection
+   redis-cli ping
+   ```
+
+3. **Debugging Redis Connection Issues**
+
+   a. **From Host Machine:**
+   ```bash
+   # Test basic Redis connectivity
+   redis-cli ping
+   
+   # Check Redis is listening on all interfaces
+   netstat -tulpn | grep 6379
+   ```
+
+   b. **From Docker Container:**
+   ```bash
+   # Enter the container
+   docker exec -it <container_id> bash
+   
+   # Test Redis connection using Python
+   python3
+   >>> import redis
+   >>> r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+   >>> print(r.ping())  # Should return True
+   ```
+
+   c. **Common Issues:**
+   - If `redis-cli` is not found in container: This is expected as we don't install it in the container
+   - Connection refused: Check Redis is running and configured to accept external connections
+   - Timeout: Verify network settings and firewall rules
+   - Authentication error: Check if Redis password is required and properly configured
+
+4. **Network Configuration**
+   - Using `--network host` allows the container to access Redis on localhost
+   - For non-host networking, use the host machine's IP address instead of localhost
+   - Ensure no firewall rules are blocking Redis port (6379)
+
+## Deployment
+## Github Actions
+The GitHub Actions workflow automates the deployment process to AWS Lambda. Here's what it does:
+
+1. **Build and Test**
+   - Runs on every push to main branch
+   - Sets up Python 3.11 environment
+   - Installs dependencies using pipenv
+   - Runs pytest test suite
+   - Builds Docker image for both development and production
+
+2. **AWS Deployment**
+   - Authenticates with AWS using GitHub Secrets
+   - Logs into Amazon ECR (Elastic Container Registry)
+   - Tags and pushes the Docker image to ECR
+   - Updates the Lambda function with the new image
+
+The workflow ensures consistent deployments and reduces manual intervention in the deployment process.
+
+## Beta User Manual (Not Recommended)
 
 - **build docker image**
 ```
