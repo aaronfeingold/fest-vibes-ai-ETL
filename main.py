@@ -1370,49 +1370,58 @@ class RedisCacheHandler:
         """Generate a cache key for a specific date"""
         return f"events:{date_str}"
 
-    def _get_ttl(self, event_date: date) -> Optional[int]:
-        today = datetime.now().date()
-        days_diff = (event_date - today).days
+    def _get_ttl(self, date_str: str) -> Optional[int]:
+        """Calculate TTL based on date string"""
+        try:
+            event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            today = datetime.now().date()
+            days_diff = (event_date - today).days
 
-        if days_diff == 0:
-            return 86400  # 24 hours for today
-        elif days_diff > 0:
-            return None  # no TTL for future dates
-        else:
-            return 86400  # 24 hours for historical (optional)
+            if days_diff == 0:
+                return 86400  # 24 hours for today
+            elif days_diff > 0:
+                return None  # no TTL for future dates
+            else:
+                return 86400  # 24 hours for historical (optional)
+        except ValueError as e:
+            logger.error(f"Invalid date format: {date_str}. Error: {e}")
+            return None
 
     async def cache_events(self, date_str: str, events: List[EventDTO]) -> None:
         """Cache events for a specific date with appropriate TTL"""
-        cache_key = self._get_cache_key(date_str)
-        events_json = json.dumps(events, cls=EventDTOEncoder)
+        try:
+            cache_key = self._get_cache_key(date_str)
+            events_json = json.dumps(events, cls=EventDTOEncoder)
 
-        existing = self.redis_client.get(cache_key)
+            existing = self.redis_client.get(cache_key)
 
-        today = datetime.now().date()
-        days_diff = (date_str - today).days
+            if existing:
+                existing_data = json.loads(existing)
+                new_data = json.loads(events_json)
 
-        if existing:
-            existing_data = json.loads(existing)
-            new_data = json.loads(events_json)
+                if existing_data == new_data:
+                    # Data hasn't changed
+                    event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    today = datetime.now().date()
+                    if event_date == today:
+                        # But it's today, so renew TTL anyway
+                        self.redis_client.expire(cache_key, 86400)
+                        logger.info(f"Refreshed TTL for today's data: {date_str}")
+                    else:
+                        logger.info(
+                            f"No change detected for {date_str}, skipping cache update"
+                        )
+                    return
 
-            if existing_data == new_data:
-                # Data hasn't changed
-                if days_diff == 0:
-                    # But it's today, so renew TTL anyway
-                    self.redis_client.expire(cache_key, 86400)
-                    logger.info(f"Refreshed TTL for today's data: {date_str}")
-                else:
-                    logger.info(
-                        f"No change detected for {date_str}, skipping cache update"
-                    )
-                return
-
-        ttl = self._get_ttl(date_str)
-        if ttl:
-            self.redis_client.setex(cache_key, ttl, events_json)
-        else:
-            self.redis_client.set(cache_key, events_json)
-        logger.info(f"Cached events for {date_str} with TTL {ttl} seconds")
+            ttl = self._get_ttl(date_str)
+            if ttl:
+                self.redis_client.setex(cache_key, ttl, events_json)
+            else:
+                self.redis_client.set(cache_key, events_json)
+            logger.info(f"Cached events for {date_str} with TTL {ttl} seconds")
+        except Exception as e:
+            logger.error(f"Error caching events for {date_str}: {str(e)}")
+            # Don't raise the exception - let the main flow continue even if caching fails
 
     async def get_cached_events(self, date_str: str) -> Optional[List[EventDTO]]:
         """Retrieve cached events for a specific date"""
