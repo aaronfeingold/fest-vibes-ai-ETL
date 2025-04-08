@@ -19,7 +19,8 @@ COPY . .
 FROM base AS dev
 # Set only non-sensitive environment variables
 ENV BASE_URL=http://localhost:3000 \
-    S3_BUCKET_NAME=ajf-live-re-wire-data-dev
+    S3_BUCKET_NAME=ajf-live-re-wire-data-dev \
+    REDIS_URL=host.docker.internal:6379
 
 # Copy the test script
 COPY tests/test_invoke.py .
