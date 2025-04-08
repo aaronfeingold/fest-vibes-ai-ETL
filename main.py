@@ -1363,42 +1363,55 @@ class RedisCacheHandler:
         else:
             # Fallback to direct host:port format
             self.redis_client = redis.Redis(
-                host=redis_url,
-                port=6379,
-                decode_responses=True
+                host=redis_url, port=6379, decode_responses=True
             )
-        # Set TTLs for different date ranges
-        self.ttls = {
-            'today': 3600,  # 1 hour for today's events
-            'tomorrow': 7200,  # 2 hours for tomorrow's events
-            'week': 86400,  # 24 hours for this week's events
-            'next_week': 172800  # 48 hours for next week's events
-        }
 
     def _get_cache_key(self, date_str: str) -> str:
         """Generate a cache key for a specific date"""
         return f"events:{date_str}"
+
+    def _get_ttl(self, event_date: date) -> Optional[int]:
+        today = datetime.now().date()
+        days_diff = (event_date - today).days
+
+        if days_diff == 0:
+            return 86400  # 24 hours for today
+        elif days_diff > 0:
+            return None  # no TTL for future dates
+        else:
+            return 86400  # 24 hours for historical (optional)
 
     async def cache_events(self, date_str: str, events: List[EventDTO]) -> None:
         """Cache events for a specific date with appropriate TTL"""
         cache_key = self._get_cache_key(date_str)
         events_json = json.dumps(events, cls=EventDTOEncoder)
 
-        # Determine TTL based on how far in the future the date is
-        event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        existing = self.redis_client.get(cache_key)
+
         today = datetime.now().date()
-        days_diff = (event_date - today).days
+        days_diff = (date_str - today).days
 
-        if days_diff == 0:
-            ttl = self.ttls['today']
-        elif days_diff == 1:
-            ttl = self.ttls['tomorrow']
-        elif days_diff <= 7:
-            ttl = self.ttls['week']
+        if existing:
+            existing_data = json.loads(existing)
+            new_data = json.loads(events_json)
+
+            if existing_data == new_data:
+                # Data hasn't changed
+                if days_diff == 0:
+                    # But it's today, so renew TTL anyway
+                    self.redis_client.expire(cache_key, 86400)
+                    logger.info(f"Refreshed TTL for today's data: {date_str}")
+                else:
+                    logger.info(
+                        f"No change detected for {date_str}, skipping cache update"
+                    )
+                return
+
+        ttl = self._get_ttl(date_str)
+        if ttl:
+            self.redis_client.setex(cache_key, ttl, events_json)
         else:
-            ttl = self.ttls['next_week']
-
-        self.redis_client.setex(cache_key, ttl, events_json)
+            self.redis_client.set(cache_key, events_json)
         logger.info(f"Cached events for {date_str} with TTL {ttl} seconds")
 
     async def get_cached_events(self, date_str: str) -> Optional[List[EventDTO]]:
