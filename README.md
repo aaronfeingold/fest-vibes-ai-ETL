@@ -132,7 +132,28 @@ docker run \
    redis-cli ping
    ```
 
-3. **Debugging Redis Connection Issues**
+3. **Querying Redis Data**
+   ```bash
+   # Connect to Redis CLI
+   redis-cli
+
+   # List all keys (our events are stored with pattern "events:YYYY-MM-DD")
+   KEYS "events:*"
+
+   # Get a specific event date's data
+   GET "events:2024-03-20"
+
+   # Monitor Redis in real-time
+   redis-cli monitor
+
+   # Check Redis memory usage
+   redis-cli info memory
+
+   # Get all keys with their TTL (time to live)
+   redis-cli --scan --pattern "events:*" | while read key; do echo "$key: $(redis-cli ttl "$key")"; done
+   ```
+
+4. **Debugging Redis Connection Issues**
 
    a. **From Host Machine:**
    ```bash
