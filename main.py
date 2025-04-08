@@ -1348,11 +1348,25 @@ class FileHandler:
 
 class RedisCacheHandler:
     def __init__(self):
-        self.redis_client = redis.Redis(
-            host=os.getenv('REDIS_URL', 'localhost'),
-            port=6379,
-            decode_responses=True
-        )
+        redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        # Parse the Redis URL
+        if redis_url.startswith('redis://'):
+            # Remove the redis:// prefix
+            redis_url = redis_url[8:]
+            # Split into host and port
+            host, port = redis_url.split(':')
+            self.redis_client = redis.Redis(
+                host=host,
+                port=int(port),
+                decode_responses=True
+            )
+        else:
+            # Fallback to direct host:port format
+            self.redis_client = redis.Redis(
+                host=redis_url,
+                port=6379,
+                decode_responses=True
+            )
         # Set TTLs for different date ranges
         self.ttls = {
             'today': 3600,  # 1 hour for today's events
@@ -1473,7 +1487,6 @@ class Utilities(FileHandler):
 class Controllers(Utilities):
     def __init__(self):
         super().__init__()
-        self.redis_cache = RedisCacheHandler()
 
     @staticmethod
     async def create_events(
@@ -1491,7 +1504,8 @@ class Controllers(Utilities):
                 events = await deep_scraper.run(params)
 
                 # Cache the events in Redis
-                await self.redis_cache.cache_events(params["date"], events)
+                redis_cache = RedisCacheHandler()
+                await redis_cache.cache_events(params["date"], events)
 
                 logger.info("save JSON output to file")
                 # save JSON output to file for debugging
