@@ -68,9 +68,19 @@ pipenv shell
 pipenv install
 ```
 
+### Use pre-commit hooks
+1. Install the git hooks:
+```sh
+pre-commit install
+```
+2. Run pre-commit on all files:
+```sh
+pre-commit run --all-files
+```
+
 ### Run
 ```sh
-python main.py
+PYTHONPATH=. python tests/test_invoke.py
 ```
 
 ## Testing
@@ -115,10 +125,10 @@ docker run \
    ```bash
    # Edit Redis configuration
    sudo nano /etc/redis/redis.conf
-   
+
    # Find and modify the bind line to:
    bind 0.0.0.0
-   
+
    # Restart Redis
    sudo systemctl restart redis
    ```
@@ -127,7 +137,7 @@ docker run \
    ```bash
    # Check Redis status
    sudo systemctl status redis
-   
+
    # Test Redis connection
    redis-cli ping
    ```
@@ -159,7 +169,7 @@ docker run \
    ```bash
    # Test basic Redis connectivity
    redis-cli ping
-   
+
    # Check Redis is listening on all interfaces
    netstat -tulpn | grep 6379
    ```
@@ -168,7 +178,7 @@ docker run \
    ```bash
    # Enter the container
    docker exec -it <container_id> bash
-   
+
    # Test Redis connection using Python
    python3
    >>> import redis
