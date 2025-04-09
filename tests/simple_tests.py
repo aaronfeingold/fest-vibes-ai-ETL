@@ -92,14 +92,20 @@ async def test_fetch_html_success():
 
     # Create a proper mock session that supports async context manager
     class MockSession:
+        def __init__(self):
+            self._closed = False
+
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
+            self._closed = True
 
         async def get(self, url, **kwargs):
             return MockResponse(MOCK_HTML, status=200)
+
+        async def close(self):
+            self._closed = True
 
     # Inject mock session
     scraper.session = MockSession()
@@ -129,14 +135,20 @@ async def test_fetch_html_failure():
 
     # Create a proper mock session that supports async context manager
     class MockSession:
+        def __init__(self):
+            self._closed = False
+
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
+            self._closed = True
 
         async def get(self, url, **kwargs):
             return MockResponse("", status=404)
+
+        async def close(self):
+            self._closed = True
 
     # Inject mock session
     scraper.session = MockSession()
@@ -284,7 +296,7 @@ async def test_create_events_controller():
     # Mock DeepScraper and FileHandler
     with patch("main.DeepScraper") as MockScraper, \
          patch("main.DatabaseHandler.create") as MockDbHandler, \
-         patch("main.Utilities.save_events_local") as MockSaveEvents:
+         patch("main.FileHandler.save_events_local") as MockSaveEvents:
 
         # Setup mocks
         scraper_instance = MockScraper.return_value
