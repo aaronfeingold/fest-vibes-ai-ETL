@@ -77,7 +77,7 @@ python main.py
 ### Test Suites
 **Ensure the PYTHONPATH is set**
 ```sh
-PYTHONPATH=. pytest tests/test_main.py
+PYTHONPATH=. pytest tests/simple_tests.py
 ```
 
 ### Python Debugger
@@ -192,17 +192,17 @@ docker run \
 The GitHub Actions workflow automates the deployment process to AWS Lambda. Here's what it does:
 
 1. **Build and Test**
-   - Runs on every push to main branch
+   - Runs on every push to staging or main branch
    - Sets up Python 3.11 environment
    - Installs dependencies using pipenv
    - Runs pytest test suite
-   - Builds Docker image for both development and production
+   - Builds Docker prod image (dev image is only local)
 
 2. **AWS Deployment**
    - Authenticates with AWS using GitHub Secrets
    - Logs into Amazon ECR (Elastic Container Registry)
    - Tags and pushes the Docker image to ECR
-   - Updates the Lambda function with the new image
+   - Updates the either the prod or dev Lambda function with the new image
 
 The workflow ensures consistent deployments and reduces manual intervention in the deployment process.
 
