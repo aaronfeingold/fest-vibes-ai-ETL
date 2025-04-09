@@ -1,15 +1,16 @@
-import os
+import asyncio
+import logging
 import sys
 from pathlib import Path
+
+from sqlalchemy import text
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler
 
 # Add the project root to the Python path
 project_root = str(Path(__file__).parent.parent)
 sys.path.insert(0, project_root)
 
-import asyncio
-import logging
-from sqlalchemy import text
-from main import DatabaseHandler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

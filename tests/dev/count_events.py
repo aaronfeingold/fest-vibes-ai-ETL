@@ -1,7 +1,9 @@
 import asyncio
 import logging
+
 from sqlalchemy import text
-from main import DatabaseHandler
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler
 
 # Configure logging
 logging.basicConfig(
@@ -9,8 +11,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 async def count_events():
-    """Count events in the database"""
+    """Count events in the database."""
     try:
         logger.info("Creating database handler...")
         db = await DatabaseHandler.create()
@@ -22,12 +25,16 @@ async def count_events():
             total_events = result.scalar()
 
             # Count events with embeddings
-            result = await session.execute(text("""
+            result = await session.execute(
+                text(
+                    """
                 SELECT COUNT(*)
                 FROM events
                 WHERE description_embedding IS NOT NULL
                 OR event_text_embedding IS NOT NULL
-            """))
+            """
+                )
+            )
             events_with_embeddings = result.scalar()
 
             logger.info(f"Total events in database: {total_events}")
@@ -38,6 +45,7 @@ async def count_events():
     except Exception as e:
         logger.error(f"Error counting events: {str(e)}")
         raise
+
 
 if __name__ == "__main__":
     asyncio.run(count_events())

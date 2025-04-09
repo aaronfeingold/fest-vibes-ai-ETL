@@ -1,16 +1,18 @@
-import pytest
+from datetime import date, datetime
 from unittest.mock import AsyncMock, patch
-from datetime import datetime, date
-from main import (
-    DeepScraper,
-    ScrapingError,
-    ErrorType,
-    VenueData,
+
+import pytest
+
+from ajf_live_re_wire_ETL.main import (
     ArtistData,
+    Controllers,
+    DeepScraper,
+    ErrorType,
     EventData,
     EventDTO,
+    ScrapingError,
     Utilities,
-    Controllers,
+    VenueData,
 )
 
 # Test data
@@ -38,7 +40,7 @@ MOCK_HTML = """
 
 # Test Utility functions first (simple, no async)
 def test_generate_response():
-    """Test the generate_response function"""
+    """Test the generate_response function."""
     response = Utilities.generate_response(200, {"status": "success", "data": "test"})
 
     assert response["statusCode"] == 200
@@ -48,7 +50,7 @@ def test_generate_response():
 
 
 def test_validate_params():
-    """Test the validate_params function"""
+    """Test the validate_params function."""
     # Test with valid date
     params = {"date": "2025-03-21"}
     result = Utilities.validate_params(params)
@@ -64,7 +66,7 @@ def test_validate_params():
 # Test basic scraper methods with mocked responses
 @pytest.mark.asyncio
 async def test_generate_url():
-    """Test the generate_url method"""
+    """Test the generate_url method."""
     scraper = DeepScraper()
     url = scraper.generate_url({"date": "2025-03-21"})
     assert "date=2025-03-21" in url
@@ -91,8 +93,8 @@ async def test_fetch_html_success():
         def __await__(self):
             async def dummy():
                 return self
-            return dummy().__await__()
 
+            return dummy().__await__()
 
     class MockSession:
         def get(self, url, **kwargs):
@@ -127,6 +129,7 @@ async def test_fetch_html_failure():
         def __await__(self):
             async def dummy():
                 return self
+
             return dummy().__await__()
 
     class MockSession:
@@ -146,7 +149,7 @@ async def test_fetch_html_failure():
 
 @pytest.mark.asyncio
 async def test_parse_event_performance_time():
-    """Test parsing event performance time"""
+    """Test parsing event performance time."""
     scraper = DeepScraper()
 
     # Test valid time
@@ -166,7 +169,7 @@ async def test_parse_event_performance_time():
 
 # Test data structures
 def test_event_dto_creation():
-    """Test creating EventDTO objects"""
+    """Test creating EventDTO objects."""
     venue = VenueData(name="Test Venue", thoroughfare="123 Test St")
     artist = ArtistData(name="Test Artist", genres=["Jazz", "Blues"])
     event_date = datetime.now().date()
@@ -197,7 +200,7 @@ def test_event_dto_creation():
 # Integration tests with more thorough mocking
 @pytest.mark.asyncio
 async def test_simplified_parse_html():
-    """Test parsing HTML with simplified mocking"""
+    """Test parsing HTML with simplified mocking."""
     scraper = DeepScraper()
 
     # Sample HTML with minimum structure needed
@@ -225,7 +228,7 @@ async def test_simplified_parse_html():
             thoroughfare="123 Test St",
             locality="New Orleans",
             state="LA",
-            postal_code="70116"
+            postal_code="70116",
         )
     )
 
@@ -233,13 +236,11 @@ async def test_simplified_parse_html():
         event_date=datetime.now().date(),
         event_artist="Test Artist",
         wwoz_event_href="/events/456",
-        description="Test description"
+        description="Test description",
     )
 
     artist_data = ArtistData(
-        name="Test Artist",
-        genres=["Jazz", "Blues"],
-        wwoz_artist_href="/artists/789"
+        name="Test Artist", genres=["Jazz", "Blues"], wwoz_artist_href="/artists/789"
     )
 
     scraper.get_event_data = AsyncMock(return_value=(event_data, artist_data))
@@ -259,7 +260,7 @@ async def test_simplified_parse_html():
 
 @pytest.mark.asyncio
 async def test_create_events_controller():
-    """Test the create_events controller function"""
+    """Test the create_events controller function."""
     # Mock dependencies
     event = {"queryStringParameters": {"date": "2025-03-21"}}
     aws_info = {"aws_request_id": "test-id", "log_stream_name": "test-stream"}
@@ -270,18 +271,19 @@ async def test_create_events_controller():
             venue_data=VenueData(name="Test Venue"),
             artist_data=ArtistData(name="Test Artist"),
             event_data=EventData(
-                event_date=datetime.now().date(),
-                event_artist="Test Artist"
+                event_date=datetime.now().date(), event_artist="Test Artist"
             ),
             performance_time=datetime.now(),
-            scrape_time=date.today()
+            scrape_time=date.today(),
         )
     ]
 
     # Mock DeepScraper and FileHandler
-    with patch("main.DeepScraper") as MockScraper, \
-         patch("main.DatabaseHandler.create") as MockDbHandler, \
-         patch("main.FileHandler.save_events_local") as MockSaveEvents:
+    with (
+        patch("main.DeepScraper") as MockScraper,
+        patch("main.DatabaseHandler.create") as MockDbHandler,
+        patch("main.FileHandler.save_events_local") as MockSaveEvents,
+    ):
 
         # Setup mocks
         scraper_instance = MockScraper.return_value

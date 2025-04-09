@@ -1,14 +1,16 @@
-import json
 import asyncio
+import json
 import logging
 import os
 import traceback
 from datetime import datetime, timedelta
+from urllib.parse import urlparse, urlunparse
+
 import pytz
-from main import lambda_handler, DatabaseHandler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
-from urllib.parse import urlparse, urlunparse
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler, lambda_handler
 
 # Configure logging
 logging.basicConfig(
@@ -46,7 +48,7 @@ class LambdaTestContext:
 
 
 async def scrape_for_date(date_str: str):
-    """Scrape events for a specific date"""
+    """Scrape events for a specific date."""
     event = {
         "queryStringParameters": {"date": date_str},
         "httpMethod": "POST",
@@ -60,7 +62,7 @@ async def scrape_for_date(date_str: str):
 
 
 async def scrape_next_week():
-    """Scrape events for today and the next 7 days"""
+    """Scrape events for today and the next 7 days."""
     today = datetime.now(pytz.timezone("America/Chicago")).date()
 
     for days_ahead in range(8):  # Today + 7 days
@@ -74,7 +76,7 @@ async def scrape_next_week():
 
 
 async def check_database():
-    """Check if events were saved to the database"""
+    """Check if events were saved to the database."""
     db = None
     try:
         logger.info("Creating database handler...")
@@ -89,7 +91,10 @@ async def check_database():
                     logger.info("Found events with embeddings:")
                     for event in embeddings:
                         logger.info(
-                            f"Event ID: {event['id']}, Artist: {event['artist']}, Venue: {event['venue']}"
+                            (
+                                f"Event ID: {event['id']}, Artist: {event['artist']}, "
+                                f"Venue: {event['venue']}"
+                            )
                         )
                 else:
                     logger.warning("No events with embeddings found in database")

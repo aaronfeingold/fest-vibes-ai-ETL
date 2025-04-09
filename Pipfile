@@ -31,6 +31,7 @@ isort = "*"
 flake8 = "*"
 mypy = "*"
 pytest-mock = "*"
+types-pytz = "*"
 
 [requires]
 python_version = "3.11"

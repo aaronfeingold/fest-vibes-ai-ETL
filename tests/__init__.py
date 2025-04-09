@@ -1,3 +1,1 @@
-"""
-Test package for AJF Live Re-Wire
-"""
+"""Test package for ajf_live_re_wire_ETL."""

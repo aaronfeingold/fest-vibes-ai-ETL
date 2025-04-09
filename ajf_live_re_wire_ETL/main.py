@@ -1,44 +1,84 @@
-import os
-import re
+"""Main module for the ajf_live_re_wire_ETL project.
+
+This module is responsible for scraping event data from a sample website, processing the data,
+and storing it in a database. It also provides functionality for caching data in Redis,
+uploading data to S3, and serving the data via an AWS Lambda function.
+
+The module includes:
+- Database models for venues, artists, events, and genres.
+- Data transfer objects (DTOs) for transferring data between layers.
+- Services for geocoding, database handling, and embedding generation.
+- Scraping logic for extracting event data from the sample website.
+- File handling for saving and uploading event data.
+- Redis caching for optimizing data retrieval.
+- Utilities for generating responses and validating parameters.
+- Controllers for orchestrating the scraping, processing, and storage of event data.
+- Lambda handler for integrating with AWS Lambda.
+
+Dependencies:
+- SQLAlchemy for database interactions.
+- aiohttp for asynchronous HTTP requests.
+- BeautifulSoup for HTML parsing.
+- Redis for caching.
+- boto3 for S3 interactions.
+- SentenceTransformer for embedding generation.
+
+Environment Variables:
+- BASE_URL: The base URL of the sample website to scrape.
+- PG_DATABASE_URL: The PostgreSQL database URL.
+- GOOGLE_MAPS_API_KEY: API key for Google Maps geocoding.
+- S3_BUCKET_NAME: Name of the S3 bucket for storing event data.
+- REDIS_URL: URL for connecting to the Redis instance.
+- USER_AGENT: User-Agent string for HTTP requests.
+- WWOZ_DATE_FORMAT: Date format for query parameters.
+
+Usage:
+- Deploy this module as an AWS Lambda function.
+- Use the POST method to scrape and store event data.
+- Use the GET method to retrieve event data from the cache or database.
+"""
+
 import json
 import logging
-from dotenv import load_dotenv
-from bs4 import BeautifulSoup
+import os
+import re
+from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TypedDict, Union
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urljoin
+
+import aiohttp
+import boto3
+import pytz
 import redis
 from botocore.exceptions import ClientError
-from urllib.error import URLError, HTTPError
-from urllib.parse import urljoin, urlencode
-from datetime import datetime, date
-import pytz
-from typing import Dict, Any, List, TypedDict, Union, Optional
-from enum import Enum
-from dataclasses import dataclass, field, asdict
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+from pgvector.sqlalchemy import Vector
+from sentence_transformers import SentenceTransformer
 from sqlalchemy import (
     Boolean,
     Column,
-    Integer,
-    String,
-    DateTime,
     Date,
-    Index,
-    ForeignKey,
+    DateTime,
     Float,
+    ForeignKey,
+    Index,
+    Integer,
     Interval,
+    String,
+    text,
 )
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, Session
-import aiohttp
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.future import select
-from sqlalchemy.exc import SQLAlchemyError
-from contextlib import asynccontextmanager
-from pathlib import Path
-from sqlalchemy import text
-from sentence_transformers import SentenceTransformer
-from pgvector.sqlalchemy import Vector
-import boto3
-
+from sqlalchemy.orm import Session, relationship
 
 load_dotenv()  # Load variables from .env
 
@@ -70,6 +110,25 @@ DEFAULT_HEADERS = {
 
 # TODO: make more use of these key-value pairs in the fn for analytics...
 class LambdaContext:
+    """
+    A class representing the context object provided to AWS Lambda functions.
+
+    Attributes:
+        aws_request_id (str): The unique identifier for the current invocation
+            of the Lambda function.
+        log_stream_name (str): The name of the CloudWatch log stream for the
+            current invocation.
+        function_name (str): The name of the Lambda function being executed.
+        function_version (str): The version of the Lambda function being
+            executed.
+        memory_limit_in_mb (int): The amount of memory allocated to the Lambda
+            function, in megabytes.
+        invoked_function_arn (str): The Amazon Resource Name (ARN) of the Lambda
+            function being invoked.
+        remaining_time_in_millis (int): The amount of time, in milliseconds,
+            remaining before the Lambda function times out.
+    """
+
     aws_request_id: str
     log_stream_name: str
     function_name: str
@@ -80,17 +139,44 @@ class LambdaContext:
 
 
 class AwsInfo(TypedDict):
+    """
+    A TypedDict representing AWS-related information.
+
+    Attributes:
+        aws_request_id (str): The unique identifier for the AWS request.
+        log_stream_name (str): The name of the log stream associated with the AWS request.
+    """
+
     aws_request_id: str
     log_stream_name: str
 
 
 class SuccessResponseBase(TypedDict):
+    """
+    A base class for representing a successful response.
+
+    Attributes:
+        status (str): The status of the response, typically indicating success.
+        data (Any): The data payload of the response.
+        date (str): The date when the response was generated.
+    """
+
     status: str
     data: Any
     date: str
 
 
 class ErrorResponseBase(TypedDict):
+    """
+    A TypedDict representing the structure of an error response.
+
+    Attributes:
+        status (str): The status of the response, typically indicating failure.
+        error (Dict[str, str]): A dictionary containing error details,
+        where the key is the error field
+        and the value is the corresponding error message.
+    """
+
     status: str
     error: Dict[str, str]
 
@@ -102,6 +188,15 @@ ResponseBody = Union[SuccessResponse, ErrorResponse]
 
 
 class ResponseType(TypedDict):
+    """
+    ResponseType is a TypedDict that defines the structure of a response object.
+
+    Attributes:
+        statusCode (int): The HTTP status code of the response.
+        headers (Dict[str, str]): A dictionary containing the headers of the response.
+        body (ResponseBody): The body of the response, represented by a ResponseBody object.
+    """
+
     statusCode: int
     headers: Dict[str, str]
     body: ResponseBody
@@ -109,6 +204,24 @@ class ResponseType(TypedDict):
 
 # Keep track of the error types
 class ErrorType(Enum):
+    """
+    Enumeration for various error types used in the application.
+
+    Attributes:
+        GENERAL_ERROR: Represents a general error that does not fall into specific categories.
+        HTTP_ERROR: Represents an error related to HTTP requests.
+        URL_ERROR: Represents an error related to malformed or inaccessible URLs.
+        FETCH_ERROR: Represents an error that occurs during data fetching.
+        NO_EVENTS: Represents a situation where no events are found.
+        PARSE_ERROR: Represents an error that occurs during data parsing.
+        SOUP_ERROR: Represents an error related to BeautifulSoup operations.
+        UNKNOWN_ERROR: Represents an unknown or unspecified error.
+        AWS_ERROR: Represents an error related to AWS services.
+        VALUE_ERROR: Represents an error caused by invalid values.
+        DATABASE_ERROR: Represents an error related to database operations.
+        GOOGLE_MAPS_API_ERROR: Represents an error related to Google Maps API usage.
+    """
+
     GENERAL_ERROR = "GENERAL_ERROR"
     HTTP_ERROR = "HTTP_ERROR"
     URL_ERROR = "URL_ERROR"
@@ -124,7 +237,7 @@ class ErrorType(Enum):
 
 
 class ScrapingError(Exception):
-    """Custom exception for DeepScraper errors"""
+    """Custom exception for DeepScraper errors."""
 
     def __init__(
         self,
@@ -132,6 +245,14 @@ class ScrapingError(Exception):
         error_type: ErrorType = ErrorType.GENERAL_ERROR,
         status_code: int = 500,
     ):
+        """
+        Initialize a ScrapingError.
+
+        Args:
+            message (str): A human-readable error message.
+            error_type (ErrorType): The category of the error (default: GENERAL_ERROR).
+            status_code (int): HTTP-style status code associated with the error (default: 500).
+        """
         self.message = message
         self.error_type = error_type
         self.status_code = status_code
@@ -139,7 +260,7 @@ class ScrapingError(Exception):
 
 
 class DatabaseHandlerError(Exception):
-    """Custom exception for when the Database Handler errors"""
+    """Custom exception for when the Database Handler errors."""
 
     def __init__(
         self,
@@ -147,6 +268,14 @@ class DatabaseHandlerError(Exception):
         error_type: ErrorType = ErrorType.DATABASE_ERROR,
         status_code: int = 500,
     ):
+        """
+        Initialize a DatabaseHandlerError.
+
+        Args:
+            message (str): A human-readable error message.
+            error_type (ErrorType): The category of the error (default: DATABASE_ERROR).
+            status_code (int): HTTP-style status code associated with the error (default: 500).
+        """
         self.message = message
         self.error_type = error_type
         self.status_code = status_code
@@ -158,6 +287,39 @@ Base = declarative_base()
 
 # Database Models
 class Venue(Base):
+    """
+    Represents a venue entity in the database.
+
+    Attributes:
+        id (int): Primary key for the venue.
+        name (str): Name of the venue. Cannot be null.
+        phone_number (str): Contact phone number for the venue.
+        thoroughfare (str): Street address of the venue.
+        locality (str): City or locality of the venue.
+        state (str): State where the venue is located.
+        postal_code (str): Postal code of the venue.
+        full_address (str): Full address of the venue.
+        wwoz_venue_href (str): URL path for the venue on the WWOZ website.
+        website (str): Official website of the venue.
+        is_active (bool): Indicates if the venue is active. Defaults to True.
+        latitude (float): Latitude coordinate of the venue.
+        longitude (float): Longitude coordinate of the venue.
+        capacity (int): Maximum capacity of the venue.
+        is_indoor (bool): Indicates if the venue is an indoor venue. Defaults to True.
+        last_updated (datetime): Timestamp of the last update to the venue record.
+        last_geocoded (datetime): Timestamp of the last geocoding operation for the venue.
+
+    Relationships:
+        genres (list[Genre]): List of genres associated with the venue.
+        events (list[Event]): List of events hosted at the venue.
+        artists (list[Artist]): List of artists associated with the venue.
+
+    Methods:
+        full_url: Constructs the full URL for the venue using the base website URL.
+        needs_geocoding: Determines if the venue requires geocoding based on its coordinates
+                         and the last geocoding timestamp.
+    """
+
     __tablename__ = "venues"
 
     id = Column(Integer, primary_key=True)
@@ -176,7 +338,9 @@ class Venue(Base):
     capacity = Column(Integer)
     is_indoor = Column(Boolean, default=True)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
-    last_geocoded = Column(DateTime(timezone=True))  # Track when we last geocoded this venue
+    last_geocoded = Column(
+        DateTime(timezone=True)
+    )  # Track when we last geocoded this venue
 
     # Fixed relationships
     genres = relationship("Genre", secondary="venue_genres", back_populates="venues")
@@ -185,10 +349,11 @@ class Venue(Base):
 
     @hybrid_property
     def full_url(self):
+        """Construct the full URL."""
         return urljoin(SAMPLE_WEBSITE, self.wwoz_venue_href)
 
     def needs_geocoding(self) -> bool:
-        """Check if venue needs geocoding"""
+        """Check if venue needs geocoding."""
         if not self.latitude or not self.longitude:
             return True
         if not self.last_geocoded:
@@ -198,6 +363,29 @@ class Venue(Base):
 
 
 class Artist(Base):
+    """
+    Represents an artist in the database.
+
+    Attributes:
+        id (int): The primary key of the artist.
+        name (str): The name of the artist. Cannot be null.
+        wwoz_artist_href (str): A hyperlink reference to the artist's WWOZ page.
+        description (str): A description of the artist.
+        popularity_score (float): The popularity score of the artist.
+        typical_set_length (Interval): The typical set length of the artist.
+
+    Relationships:
+        events (list[Event]): A list of events associated with the artist.
+        venues (list[Venue]): A list of venues where the artist has performed,
+            through the "venue_artists" association table.
+        genres (list[Genre]): A list of genres associated with the artist,
+            through the "artist_genres" association table.
+        related_artists (list[Artist]): A list of artists related to this artist,
+            through the "artist_relations" association table.
+        related_by_artists (list[Artist]): A list of artists that have this artist
+            as a related artist, through the "artist_relations" association table.
+    """
+
     __tablename__ = "artists"
 
     id = Column(Integer, primary_key=True)
@@ -228,6 +416,37 @@ class Artist(Base):
 
 
 class Event(Base):
+    """
+    Represents an event in the database.
+
+    Attributes:
+        id (int): Primary key for the event.
+        wwoz_event_href (str): URL reference for the event.
+        description (str): Description of the event.
+        artist_id (int): Foreign key referencing the associated artist.
+        venue_id (int): Foreign key referencing the associated venue.
+        artist_name (str): Name of the artist performing at the event.
+        venue_name (str): Name of the venue hosting the event.
+        performance_time (datetime): Start time of the performance (timezone-aware).
+        end_time (datetime): End time of the performance (timezone-aware).
+        scrape_time (date): Date when the event was scraped.
+        last_updated (datetime): Timestamp of the last update (defaults to current time).
+        is_recurring (bool): Indicates if the event is recurring.
+        recurrence_pattern (str): Pattern for recurring events.
+        is_indoors (bool): Indicates if the event is indoors (default is True).
+        is_streaming (bool): Indicates if the event is streamed online (default is False).
+        description_embedding (Vector): Vector embedding of the event description.
+        event_text_embedding (Vector): Combined text embedding for semantic search.
+
+    Relationships:
+        artist (Artist): Relationship to the Artist model.
+        venue (Venue): Relationship to the Venue model.
+        genres (list[Genre]): List of genres associated with the event.
+
+    Methods:
+        full_url (str): Constructs the full URL for the event using the base website URL.
+    """
+
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True)
@@ -256,10 +475,30 @@ class Event(Base):
 
     @hybrid_property
     def full_url(self):
+        """
+        Construct the full URL by joining the base website URL with the event-specific href.
+
+        Returns:
+            str: The complete URL as a string.
+        """
         return urljoin(SAMPLE_WEBSITE, self.wwoz_event_href)
 
 
 class Genre(Base):
+    """
+    Represents a music genre in the database.
+
+    Attributes:
+        id (int): The unique identifier for the genre.
+        name (str): The name of the genre. Must be unique and cannot be null.
+        venues (list[Venue]): A list of venues associated with this genre
+          through the "venue_genres" association table.
+        artists (list[Artist]): A list of artists associated with this
+          genre through the "artist_genres" association table.
+        events (list[Event]): A list of events associated with this genre
+          through the "event_genres" association table.
+    """
+
     __tablename__ = "genres"
 
     id = Column(Integer, primary_key=True)
@@ -273,6 +512,29 @@ class Genre(Base):
 
 # Join Tables - Added missing foreign key constraints and cascades
 class ArtistRelation(Base):
+    """
+    Represents a relationship between two artists in the database.
+
+    This model defines a many-to-many relationship between artists, where each
+    artist can have multiple related artists. The relationship is stored in the
+    `artist_relations` table.
+
+    Attributes:
+        artist_id (int): The ID of the artist. This is a foreign key referencing
+            the `id` column in the `artists` table. It is part of the composite
+            primary key.
+        related_artist_id (int): The ID of the related artist. This is a foreign
+            key referencing the `id` column in the `artists` table. It is part of
+            the composite primary key.
+
+    Table Arguments:
+        __table_args__:
+            - Index("ix_artist_relation_artist_id", artist_id): Index for the
+              `artist_id` column to optimize queries.
+            - Index("ix_artist_relation_related_artist_id", related_artist_id):
+              Index for the `related_artist_id` column to optimize queries.
+    """
+
     __tablename__ = "artist_relations"
 
     artist_id = Column(
@@ -289,6 +551,20 @@ class ArtistRelation(Base):
 
 
 class VenueArtist(Base):
+    """
+    Represents the association between venues and artists in a many-to-many relationship.
+
+    Attributes:
+        venue_id (int): The ID of the venue. Foreign key referencing the 'venues' table.
+        artist_id (int): The ID of the artist. Foreign key referencing the 'artists' table.
+
+    Table Arguments:
+        __tablename__ (str): The name of the table in the database ('venue_artists').
+        __table_args__ (tuple): Additional table arguments, including indexes:
+            - Index on 'venue_id' (ix_venue_artist_venue_id).
+            - Index on 'artist_id' (ix_venue_artist_artist_id).
+    """
+
     __tablename__ = "venue_artists"
 
     venue_id = Column(
@@ -305,6 +581,20 @@ class VenueArtist(Base):
 
 
 class VenueGenre(Base):
+    """
+    Represents the association table for a many-to-many relationship between venues and genres.
+
+    Attributes:
+        venue_id (int): The ID of the venue, serving as a foreign key to the "venues" table.
+        genre_id (int): The ID of the genre, serving as a foreign key to the "genres" table.
+
+    Table Arguments:
+        __tablename__ (str): The name of the table in the database ("venue_genres").
+        __table_args__ (tuple): Additional table arguments, including:
+            - Index on `venue_id` for optimized queries.
+            - Index on `genre_id` for optimized queries.
+    """
+
     __tablename__ = "venue_genres"
 
     venue_id = Column(
@@ -321,6 +611,20 @@ class VenueGenre(Base):
 
 
 class ArtistGenre(Base):
+    """
+    Represents the association table for a many-to-many relationship between artists and genres.
+
+    Attributes:
+        artist_id (int): Foreign key referencing the ID of an artist. Acts as a primary key.
+        genre_id (int): Foreign key referencing the ID of a genre. Acts as a primary key.
+
+    Table Arguments:
+        __tablename__ (str): The name of the table in the database ("artist_genres").
+        __table_args__ (tuple): Contains additional table arguments, including:
+            - Index on artist_id ("ix_artist_genre_artist_id").
+            - Index on genre_id ("ix_artist_genre_genre_id").
+    """
+
     __tablename__ = "artist_genres"
 
     artist_id = Column(
@@ -337,6 +641,24 @@ class ArtistGenre(Base):
 
 
 class EventGenre(Base):
+    """
+    Represents the association table for a many-to-many relationship between events and genres.
+
+    This class defines the `event_genres` table, which links events to their associated genres.
+    Each row in the table corresponds to a relationship between an event and a genre.
+
+    Attributes:
+        event_id (int): The ID of the event, serving as a foreign key to the `events` table.
+        genre_id (int): The ID of the genre, serving as a foreign key to the `genres` table.
+
+    Table Arguments:
+        __table_args__:
+            - Index("ix_event_genre_event_id", event_id):
+              Index for optimizing queries by `event_id`.
+            - Index("ix_event_genre_genre_id", genre_id):
+              Index for optimizing queries by `genre_id`.
+    """
+
     __tablename__ = "event_genres"
 
     event_id = Column(
@@ -355,6 +677,23 @@ class EventGenre(Base):
 # Data Transfer Objects
 @dataclass
 class VenueData:
+    """
+    VenueData is a class that represents information about a venue.
+
+    Attributes:
+        name (str): The name of the venue.
+        thoroughfare (str): The street address or thoroughfare of the venue.
+        phone_number (str): The contact phone number for the venue.
+        locality (str): The city or locality where the venue is located. Defaults to "New Orleans".
+        state (str): The state where the venue is located.
+        postal_code (str): The postal or ZIP code of the venue.
+        full_address (str): The complete address of the venue.
+        is_active (Boolean): Indicates whether the venue is currently active. Defaults to True.
+        website (str): The website URL of the venue.
+        wwoz_venue_href (str): A reference link to the venue on the WWOZ website.
+        event_artist (str): The artist or performer associated with an event at the venue.
+    """
+
     name: str = ""
     thoroughfare: str = ""
     phone_number: str = ""
@@ -370,6 +709,17 @@ class VenueData:
 
 @dataclass
 class ArtistData:
+    """
+    A class to represent artist data.
+
+    Attributes:
+        name (str): The name of the artist.
+        description (str): A brief description of the artist. Defaults to "lorum ipsum".
+        genres (List[str]): A list of genres associated with the artist.
+        related_artists (List[str]): A list of related artists.
+        wwoz_artist_href (str): A hyperlink reference to the artist's WWOZ page.
+    """
+
     name: str = ""
     description: str = "lorum ipsum"  # TODO: USE OPENAI TO SUMMARIZE and EXTRACT
     genres: List[str] = field(default_factory=list)
@@ -379,6 +729,21 @@ class ArtistData:
 
 @dataclass
 class EventData:
+    """
+    Represents event data with details about the event, artist, and related information.
+
+    Attributes:
+        event_date (datetime): The date of the event.
+        wwoz_event_href (str): The hyperlink to the event on WWOZ. Defaults to an empty string.
+        event_artist (str): The name of the artist performing at the event.
+          Defaults to an empty string.
+        wwoz_artist_href (str): The hyperlink to the artist on WWOZ. Defaults to an empty string.
+        description (str): A description of the event. Defaults to an empty string.
+        related_artists (List[str]): A list of related artists. Defaults to an empty list.
+        genres (List[str]): A list of genres associated with the event.
+          Defaults to an empty list.
+    """
+
     event_date: datetime
     wwoz_event_href: str = ""
     event_artist: str = ""
@@ -390,6 +755,17 @@ class EventData:
 
 @dataclass
 class EventDTO:
+    """
+    Data Transfer Object (DTO) representing an event.
+
+    Attributes:
+        artist_data (ArtistData): Information about the artist associated with the event.
+        venue_data (VenueData): Information about the venue where the event is taking place.
+        event_data (EventData): General information about the event.
+        performance_time (datetime): The date and time when the event is scheduled to occur.
+        scrape_time (date): The date when the event data was scraped or retrieved.
+    """
+
     artist_data: ArtistData
     venue_data: VenueData
     event_data: EventData
@@ -398,7 +774,35 @@ class EventDTO:
 
 
 class EventDTOEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder for serializing specific objects into JSON format.
+
+    This encoder handles the following types:
+    - EventDTO, VenueData, ArtistData, EventData: Converts these objects
+        to dictionaries using `asdict`.
+    - datetime: Converts datetime objects to ISO 8601 formatted strings.
+    - date: Converts date objects to ISO 8601 formatted strings.
+
+    For other object types, the default JSONEncoder behavior is used.
+    """
+
     def default(self, obj):
+        """
+        Serialize objects into JSON-compatible formats.
+
+        Args:
+            obj (Any): The object to serialize. Supported types include:
+                - EventDTO, VenueData, ArtistData, EventData: These will be converted
+                  to dictionaries using `asdict`.
+                - datetime: This will be converted to an ISO 8601 formatted string.
+                - date: This will also be converted to an ISO 8601 formatted string.
+
+        Returns:
+            Any: A JSON-compatible representation of the object.
+
+        Raises:
+            TypeError: If the object type is not supported and cannot be serialized.
+        """
         if isinstance(obj, (EventDTO, VenueData, ArtistData, EventData)):
             return asdict(obj)
         elif isinstance(obj, datetime):
@@ -409,11 +813,53 @@ class EventDTOEncoder(json.JSONEncoder):
 
 
 class Services:
+    """
+    A service class for geocoding addresses using the Google Maps Geocoding API.
+
+    This class provides functionality to convert addresses into geographic coordinates
+    (latitude and longitude). If the address is empty, invalid, or for streaming events,
+    it defaults to the coordinates of New Orleans, Louisiana.
+
+    Attributes:
+        api_key (str): The API key for accessing the Google Maps Geocoding API.
+        base_url (str): The base URL for the Google Maps Geocoding API.
+
+    Methods:
+        geocode_address(address: str) -> dict:
+            Asynchronously geocodes a given address into latitude and longitude.
+            Returns default coordinates if the address is invalid or an error occurs.
+    """
+
     def __init__(self):
+        """
+        Initialize the class instance with the necessary configuration.
+
+        Attributes:
+            api_key (str): The API key for accessing the Google Maps API, retrieved from the
+                environment variable "GOOGLE_MAPS_API_KEY".
+            base_url (str): The base URL for the Google Maps Geocoding API.
+        """
         self.api_key = os.getenv("GOOGLE_MAPS_API_KEY")
         self.base_url = "https://maps.googleapis.com/maps/api/geocode/json"
 
     async def geocode_address(self, address: str) -> dict:
+        """
+        Geocodes a given address to retrieve its latitude and longitude.
+
+        If the address is empty, invalid, or corresponds to a streaming event,
+        default coordinates for New Orleans (NOLA) are returned.
+
+        Args:
+            address (str): The address to geocode.
+
+        Returns:
+            dict: A dictionary containing the latitude and longitude of the
+                  geocoded address. If geocoding fails, default coordinates
+                  are returned in the format:
+                  {
+                      "latitude": float,
+                      "longitude": float
+        """
         default_NOLA_coords = {
             "latitude": 29.9511,
             "longitude": -90.0715,
@@ -456,11 +902,63 @@ class Services:
 
 
 class DatabaseHandler(Services):
+    """DatabaseHandler is a service class.
+
+    Responsible for managing database interactions,
+    including creating tables, handling sessions, saving events, generating embeddings,
+    and retrieving data. It integrates with SQLAlchemy for asynchronous database operations
+    and uses a SentenceTransformer model for embedding generation.
+
+    Attributes:
+        engine (AsyncEngine): The SQLAlchemy asynchronous engine for database connections.
+        AsyncSession (async_sessionmaker): The session maker for creating asynchronous sessions.
+        embedding_model (SentenceTransformer): The model used for generating text embeddings.
+
+    Methods:
+        create(cls):
+            Class method to initialize the DatabaseHandler instance with a database engine
+            and session maker. Also ensures tables are created.
+
+        get_session():
+            Asynchronous context manager for handling database sessions.
+
+        create_tables():
+            Asynchronously creates database tables if they do not already exist.
+
+        get_or_create_genre(session, name):
+            Fetches or creates a Genre record in the database.
+
+        generate_embeddings_for_event(event):
+            Generates embeddings for an event's description and combined text.
+
+        save_events(events, scrape_time):
+            Saves a list of events to the database, handling related entities like
+            artists, venues, and genres.
+
+        get_events(session, start_date, end_date):
+            Retrieves all events occurring within a specific date range.
+
+        close():
+            Cleans up resources by properly disposing of the database engine.
+
+        inspect_embeddings(limit):
+            Inspects vector embeddings stored in the database, returning a limited
+            number of records.
+    """
+
     def __init__(self, engine, async_session):
+        """
+        Initializes the class with the provided database engine, asynchronous session,
+        and sets up the embedding model.
+
+        Args:
+            engine: The database engine to be used for database operations.
+            async_session: The asynchronous session factory for managing database sessions.
+        """
         super().__init__()
         self.engine = engine
         self.AsyncSession = async_session
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
     @classmethod
     async def create(cls):
@@ -514,16 +1012,20 @@ class DatabaseHandler(Services):
         try:
             async with self.engine.begin() as conn:
                 # Enable pgvector extension
-                await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
 
                 # Check if tables exist
-                result = await conn.execute(text("""
+                result = await conn.execute(
+                    text(
+                        """
                     SELECT EXISTS (
                         SELECT FROM information_schema.tables
                         WHERE table_schema = 'public'
                         AND table_name = 'events'
                     )
-                """))
+                """
+                    )
+                )
                 tables_exist = result.scalar()
 
                 if not tables_exist:
@@ -551,7 +1053,9 @@ class DatabaseHandler(Services):
         if event.description:
             event.description_embedding = self.embedding_model.encode(event.description)
 
-        combined_text = f"{event.artist_name} {event.venue_name} {event.description or ''}"
+        combined_text = (
+            f"{event.artist_name} {event.venue_name} {event.description or ''}"
+        )
         event.event_text_embedding = self.embedding_model.encode(combined_text)
 
     async def save_events(self, events: List[EventDTO], scrape_time: date):
@@ -749,7 +1253,8 @@ class DatabaseHandler(Services):
             try:
                 # Query events with non-null embeddings
                 result = await session.execute(
-                    text("""
+                    text(
+                        """
                         SELECT id, artist_name, venue_name,
                                description_embedding::text,
                                event_text_embedding::text
@@ -757,8 +1262,9 @@ class DatabaseHandler(Services):
                         WHERE description_embedding IS NOT NULL
                            OR event_text_embedding IS NOT NULL
                         LIMIT :limit
-                    """),
-                    {"limit": limit}
+                    """
+                    ),
+                    {"limit": limit},
                 )
 
                 rows = result.fetchall()
@@ -768,7 +1274,7 @@ class DatabaseHandler(Services):
                         "artist": row[1],
                         "venue": row[2],
                         "description_embedding": row[3],
-                        "event_text_embedding": row[4]
+                        "event_text_embedding": row[4],
                     }
                     for row in rows
                 ]
@@ -1169,7 +1675,9 @@ class DeepScraper:
                     wwoz_event_href = wwoz_event_link["href"]
                     # use the href to for the event to scrape deeper for more details on artists, and return any
                     event_data, artist_data = await self.get_event_data(
-                        wwoz_event_href, event_artist_name, datetime.strptime(date_str, "%Y-%m-%d").date()
+                        wwoz_event_href,
+                        event_artist_name,
+                        datetime.strptime(date_str, "%Y-%m-%d").date(),
                     )
                     # Extract time string
                     time_str = calendar_info.find_all("p")[1].text.strip()
@@ -1202,8 +1710,8 @@ class DeepScraper:
 
 class FileHandler:
     def __init__(self):
-        self.s3_client = boto3.client('s3')
-        self.s3_bucket = os.getenv('S3_BUCKET_NAME', 'ajf-live-re-wire-data')
+        self.s3_client = boto3.client("s3")
+        self.s3_bucket = os.getenv("S3_BUCKET_NAME", "ajf-live-re-wire-data")
 
     @staticmethod
     def sanitize_filename(filename: str) -> str:
@@ -1211,9 +1719,9 @@ class FileHandler:
         Sanitize filename to prevent path traversal and injection attacks.
         """
         # Remove any path traversal attempts
-        filename = filename.replace('../', '').replace('..\\', '')
+        filename = filename.replace("../", "").replace("..\\", "")
         # Remove any non-alphanumeric characters except - and _
-        filename = re.sub(r'[^a-zA-Z0-9\-_]', '', filename)
+        filename = re.sub(r"[^a-zA-Z0-9\-_]", "", filename)
         return filename
 
     @staticmethod
@@ -1295,14 +1803,16 @@ class FileHandler:
             timestamp = datetime.now().strftime("%Y/%m/%d")
             s3_key = f"raw_events/{timestamp}/{filename}"
 
-            logger.info(f"Uploading {filepath} to S3 bucket {self.s3_bucket} with key {s3_key}")
+            logger.info(
+                f"Uploading {filepath} to S3 bucket {self.s3_bucket} with key {s3_key}"
+            )
 
             # Upload the file
             self.s3_client.upload_file(
                 filepath,
                 self.s3_bucket,
                 s3_key,
-                ExtraArgs={'ContentType': 'application/json'}
+                ExtraArgs={"ContentType": "application/json"},
             )
 
             # Generate the S3 URL
@@ -1351,7 +1861,7 @@ class FileHandler:
 
 class RedisCacheHandler:
     def __init__(self):
-        redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         logger.info(f"redis-py version: {redis.__version__}")
         logger.info(
             f"Initializing Redis with URL pattern: {redis_url[:8]}***"
@@ -1544,7 +2054,9 @@ class Controllers(Utilities):
         try:
             # validate the parameters
             params = Utilities.validate_params(event.get("queryStringParameters", {}))
-            scrape_time = datetime.now(NEW_ORLEANS_TZ).date()  # Convert to date for DB storage
+            scrape_time = datetime.now(
+                NEW_ORLEANS_TZ
+            ).date()  # Convert to date for DB storage
 
             if not dev_env:
                 logger.info("running DeepScraper")
@@ -1559,8 +2071,7 @@ class Controllers(Utilities):
                 # save JSON output to file for debugging
                 file_handler = FileHandler()
                 filepath = await file_handler.save_events_local(
-                    events=events,
-                    date_str=params["date"]
+                    events=events, date_str=params["date"]
                 )
                 logger.info(f"Saved event data to file: {filepath}")
 
@@ -1682,11 +2193,9 @@ class Controllers(Utilities):
                 logger.info(f"Returning cached events for {date_str}")
                 return {
                     "statusCode": 200,
-                    "body": json.dumps({
-                        "status": "success",
-                        "data": cached_events,
-                        "source": "cache"
-                    })
+                    "body": json.dumps(
+                        {"status": "success", "data": cached_events, "source": "cache"}
+                    ),
                 }
 
             # If not in cache, get from database
@@ -1699,20 +2208,15 @@ class Controllers(Utilities):
 
             return {
                 "statusCode": 200,
-                "body": json.dumps({
-                    "status": "success",
-                    "data": events,
-                    "source": "database"
-                })
+                "body": json.dumps(
+                    {"status": "success", "data": events, "source": "database"}
+                ),
             }
         except Exception as e:
             logger.error(f"Error getting events: {str(e)}")
             return {
                 "statusCode": 500,
-                "body": json.dumps({
-                    "status": "error",
-                    "error": str(e)
-                })
+                "body": json.dumps({"status": "error", "error": str(e)}),
             }
 
 

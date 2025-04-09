@@ -1,6 +1,8 @@
 import asyncio
-from main import DatabaseHandler
+
 from sqlalchemy import text
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler
 
 
 async def main():
@@ -25,14 +27,14 @@ async def main():
             print(f"Venue: {event.get('venue', 'N/A')}")
 
             # Safely handle description embedding
-            desc_embedding = event.get('description_embedding')
+            desc_embedding = event.get("description_embedding")
             if desc_embedding is not None:
                 print(f"Description Embedding: {desc_embedding[:100]}...")
             else:
                 print("Description Embedding: None")
 
             # Safely handle event text embedding
-            event_embedding = event.get('event_text_embedding')
+            event_embedding = event.get("event_text_embedding")
             if event_embedding is not None:
                 print(f"Event Text Embedding: {event_embedding[:100]}...")
             else:
@@ -44,6 +46,7 @@ async def main():
 
     except Exception as e:
         print(f"Error: {str(e)}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

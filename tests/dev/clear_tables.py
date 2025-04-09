@@ -1,7 +1,9 @@
 import asyncio
 import logging
+
 from sqlalchemy import text
-from main import DatabaseHandler
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler
 
 # Configure logging
 logging.basicConfig(
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def clear_tables():
-    """Clear all tables in the database"""
+    """Script to clear all tables in the database."""
     try:
         logger.info("Creating database handler...")
         db = await DatabaseHandler.create()
@@ -23,7 +25,7 @@ async def clear_tables():
                 sql_commands = file.read()
 
             # Execute each command
-            for command in sql_commands.split(';'):
+            for command in sql_commands.split(";"):
                 if command.strip():
                     await session.execute(text(command))
 
@@ -35,6 +37,7 @@ async def clear_tables():
     except Exception as e:
         logger.error(f"Error clearing tables: {str(e)}")
         raise
+
 
 if __name__ == "__main__":
     asyncio.run(clear_tables())

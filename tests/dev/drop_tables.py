@@ -1,7 +1,9 @@
 import asyncio
 import logging
+
 from sqlalchemy import text
-from main import DatabaseHandler
+
+from ajf_live_re_wire_ETL.main import DatabaseHandler
 
 # Configure logging
 logging.basicConfig(
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def drop_tables():
-    """drop all tables in the database"""
+    """Script to drop all tables in the database."""
     try:
         logger.info("Creating database handler...")
         db = await DatabaseHandler.create()
