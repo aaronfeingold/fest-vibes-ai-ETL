@@ -476,6 +476,7 @@ class DatabaseHandler(Services):
                 pool_size=5,
                 max_overflow=10,
                 pool_timeout=30,
+                connect_args={"ssl": True},
             )
 
             async_session = async_sessionmaker(
@@ -1349,22 +1350,38 @@ class FileHandler:
 class RedisCacheHandler:
     def __init__(self):
         redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-        # Parse the Redis URL
-        if redis_url.startswith('redis://'):
-            # Remove the redis:// prefix
-            redis_url = redis_url[8:]
-            # Split into host and port
-            host, port = redis_url.split(':')
-            self.redis_client = redis.Redis(
-                host=host,
-                port=int(port),
-                decode_responses=True
+        logger.info(f"redis-py version: {redis.__version__}")
+        logger.info(
+            f"Initializing Redis with URL pattern: {redis_url[:8]}***"
+        )  # Log only the protocol for security
+
+        try:
+            self.redis_client = redis.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
             )
-        else:
-            # Fallback to direct host:port format
-            self.redis_client = redis.Redis(
-                host=redis_url, port=6379, decode_responses=True
-            )
+            # ping once here to fail early
+            self.redis_client.ping()
+            logger.info("Successfully connected to Redis")
+
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {str(e)}")
+            # Provide a fallback mechanism if Redis connection fails
+            self.redis_client = None
+            logger.warning("Using null Redis client - caching disabled")
+
+    def is_connected(self):
+        """Check if Redis connection is working"""
+        if not self.redis_client:
+            return False
+        try:
+            self.redis_client.ping()
+            return True
+        except Exception:
+            return False
 
     def _get_cache_key(self, date_str: str) -> str:
         """Generate a cache key for a specific date"""
@@ -1389,6 +1406,9 @@ class RedisCacheHandler:
 
     async def cache_events(self, date_str: str, events: List[EventDTO]) -> None:
         """Cache events for a specific date with appropriate TTL"""
+        if not self.is_connected():
+            logger.warning("Redis not connected - skipping cache operation")
+            return
         try:
             cache_key = self._get_cache_key(date_str)
             events_json = json.dumps(events, cls=EventDTOEncoder)
@@ -1425,6 +1445,10 @@ class RedisCacheHandler:
 
     async def get_cached_events(self, date_str: str) -> Optional[List[EventDTO]]:
         """Retrieve cached events for a specific date"""
+        if not self.is_connected():
+            logger.warning("Redis not connected - skipping cache operation")
+            return
+
         cache_key = self._get_cache_key(date_str)
         cached_data = self.redis_client.get(cache_key)
 
