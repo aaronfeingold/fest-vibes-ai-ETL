@@ -9,7 +9,7 @@ COPY Pipfile Pipfile.lock ./
 RUN pip install pipenv
 
 # Install dependencies in system environment to avoid duplication across stages
-RUN pipenv install --ignore-pipfile --system
+RUN pipenv install --deploy --system
 # Uninstall pipenv after dependencies are installed
 RUN pip uninstall -y pipenv
 # Copy the application code (done once here to avoid repeating in stages)
