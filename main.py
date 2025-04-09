@@ -827,6 +827,8 @@ class DeepScraper:
                         status_code=response.status,
                     )
                 return await response.text()
+        except ScrapingError:
+            raise
         except HTTPError as e:
             raise ScrapingError(
                 message=f"Failed to fetch data: HTTP {e.code}",
