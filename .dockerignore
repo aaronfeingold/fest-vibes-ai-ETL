@@ -1,0 +1,14 @@
+# Ignore secrets directory
+secrets/
+
+# other stuff
+*.pyc
+__pycache__/
+.env
+*.log
+data/
+CICD/
+.vscode/
+*.DS_Store
+.pytest_cache/
+.github/
