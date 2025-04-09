@@ -16,7 +16,7 @@ RUN pipenv install --dev --deploy --system
 RUN pip uninstall -y pipenv
 
 # Copy full application
-COPY . .
+COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
 
 # Set development environment variables
 ENV BASE_URL=http://localhost:3000 \
@@ -37,7 +37,7 @@ RUN pipenv install --deploy --system --ignore-pipfile
 RUN pip uninstall -y pipenv
 
 # Copy app code (don't copy dev/test stuff)
-COPY . .
+COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
 
 # AWS Lambda runtime entry point
-CMD ["main.lambda_handler"]
+CMD ["rewired_af.main.lambda_handler"]
