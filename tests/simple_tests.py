@@ -72,10 +72,8 @@ async def test_generate_url():
 
 @pytest.mark.asyncio
 async def test_fetch_html_success():
-    """Test fetch_html method with successful response"""
     scraper = DeepScraper()
 
-    # Create a proper mock response that supports async context manager
     class MockResponse:
         def __init__(self, text, status=200):
             self._text = text
@@ -90,37 +88,30 @@ async def test_fetch_html_success():
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    # Create a proper mock session that supports async context manager
+        def __await__(self):
+            async def dummy():
+                return self
+            return dummy().__await__()
+
+
     class MockSession:
-        def __init__(self):
-            self._closed = False
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            self._closed = True
-
-        async def get(self, url, **kwargs):
+        def get(self, url, **kwargs):
             return MockResponse(MOCK_HTML, status=200)
 
         async def close(self):
-            self._closed = True
+            pass
 
-    # Inject mock session
     scraper.session = MockSession()
-
     html = await scraper.fetch_html("https://example.com")
     assert html == MOCK_HTML
 
+
 @pytest.mark.asyncio
 async def test_fetch_html_failure():
-    """Test fetch_html method with error response"""
     scraper = DeepScraper()
 
-    # Create a proper mock response that supports async context manager
     class MockResponse:
-        def __init__(self, text, status=200):
+        def __init__(self, text, status=404):
             self._text = text
             self.status = status
 
@@ -133,24 +124,18 @@ async def test_fetch_html_failure():
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    # Create a proper mock session that supports async context manager
+        def __await__(self):
+            async def dummy():
+                return self
+            return dummy().__await__()
+
     class MockSession:
-        def __init__(self):
-            self._closed = False
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            self._closed = True
-
-        async def get(self, url, **kwargs):
+        def get(self, url, **kwargs):
             return MockResponse("", status=404)
 
         async def close(self):
-            self._closed = True
+            pass
 
-    # Inject mock session
     scraper.session = MockSession()
 
     with pytest.raises(ScrapingError) as excinfo:
