@@ -8,6 +8,7 @@ import pytz
 from main import lambda_handler, DatabaseHandler
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
+from urllib.parse import urlparse, urlunparse
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +22,11 @@ load_dotenv()
 # Debug: Print database URL (with password masked)
 db_url = os.getenv("PG_DATABASE_URL", "")
 if db_url:
-    masked_url = db_url.replace("://", "://***:***@")
+    parsed = urlparse(db_url)
+    safe_netloc = f"****:****@{parsed.hostname}"
+    if parsed.port:
+        safe_netloc += f":{parsed.port}"
+    masked_url = urlunparse(parsed._replace(netloc=safe_netloc))
     logger.info(f"Database URL found: {masked_url}")
 else:
     logger.error("No database URL found in environment variables!")
