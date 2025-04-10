@@ -280,9 +280,11 @@ async def test_create_events_controller():
 
     # Mock DeepScraper and FileHandler
     with (
-        patch("main.DeepScraper") as MockScraper,
-        patch("main.DatabaseHandler.create") as MockDbHandler,
-        patch("main.FileHandler.save_events_local") as MockSaveEvents,
+        patch("ajf_live_re_wire_ETL.main.DeepScraper") as MockScraper,
+        patch("ajf_live_re_wire_ETL.main.DatabaseHandler.create") as MockDbHandler,
+        patch(
+            "ajf_live_re_wire_ETL.main.FileHandler.save_events_local"
+        ) as MockSaveEvents,
     ):
 
         # Setup mocks
