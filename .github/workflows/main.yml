@@ -31,9 +31,9 @@ jobs:
       - name: Set environment variables
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "LAMBDA_NAME=ajf-live-re-wire" >> $GITHUB_ENV
+            echo "LAMBDA_NAME=ajf-live-re-wire-ETL-main" >> $GITHUB_ENV
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "LAMBDA_NAME=oz-re-wire" >> $GITHUB_ENV
+            echo "LAMBDA_NAME=ajf-live-re-wire-ETL-staging" >> $GITHUB_ENV
           fi
           echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
 
