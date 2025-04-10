@@ -1,5 +1,5 @@
 # ---------- Base layer: shared setup ----------
-FROM python:3.11-slim AS base
+FROM public.ecr.aws/lambda/python:3.11 AS base
 WORKDIR /var/task
 
 # Install pipenv and copy lockfiles
@@ -35,7 +35,7 @@ RUN pipenv install --deploy --system --ignore-pipfile && \
     rm -rf /root/.cache/pip/*
 
 # Copy app code (don't copy dev/test stuff)
-COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
+COPY ajf_live_re_wire_ETL/main.py ./main.py
 
 # AWS Lambda runtime entry point
-CMD ["ajf_live_re_wire_ETL.main.lambda_handler"]
+CMD ["main.lambda_entrypoint"]
