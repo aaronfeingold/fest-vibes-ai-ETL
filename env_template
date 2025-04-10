@@ -1,3 +1,5 @@
-PG_DATABASE_URL=FOOBAR
+PG_DATABASE_URL=postgresql://user:password@localhost:5432/dev_db
+REDIS_URL=redis://localhost:6379
+GOOGLE_MAPS_API_KEY=secret-key
+S3_BUCKET_NAME=data-bucket
 BASE_URL="https://www.wwoz.org"
-GOOGLE_MAPS_API_KEY=BARFOO
