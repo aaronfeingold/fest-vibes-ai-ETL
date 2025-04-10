@@ -78,16 +78,16 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-### Run
-```sh
-PYTHONPATH=. python tests/test_invoke.py
-```
-
 ## Testing
 ### Test Suites
 **Ensure the PYTHONPATH is set**
 ```sh
 PYTHONPATH=. pytest tests/simple_tests.py
+```
+
+### Test Run
+```sh
+PYTHONPATH=. python tests/test_invoke.py
 ```
 
 ### Python Debugger
@@ -112,13 +112,10 @@ docker run \
   -e BASE_URL="https://www.wwoz.org" \
   -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
   -e S3_BUCKET_NAME=your-data-bucket-name \
-  # For local Redis:
-  -e REDIS_URL=redis://localhost:6379 \
-  # For Heroku Redis:
-  # -e REDIS_URL=redis://username:password@hostname:port \
+  -e REDIS_URL=rediss://username:password@hostname:port \
   ajf-live-re-wire:dev
 ```
-
+- Note: `rediss` with 2x 's' is not a typo. This indicates ssl, which is the case for the hosted Upstash service.
 #### Redis Configuration for Local Development
 
 1. **Configure Redis to Accept External Connections**
