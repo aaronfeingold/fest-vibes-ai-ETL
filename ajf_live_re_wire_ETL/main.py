@@ -38,6 +38,7 @@ Usage:
 - Use the GET method to retrieve event data from the cache or database.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -2235,3 +2236,7 @@ async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Respo
             )
     except Exception as e:
         return Controllers.generate_response(500, {"status": "error", "error": str(e)})
+
+
+def lambda_entrypoint(event, context):
+    return asyncio.run(lambda_handler(event, context))
