@@ -4,23 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-urlopen = "*"
 beautifulsoup4 = "*"
-ipdb = "*"
 pytz = "*"
-botocore = "*"
 redis = "*"
 psycopg2-binary = "*"
 python-dotenv = "*"
-boto3 = "*"
-requests = "*"
-asyncio = "*"
 aiohttp = "*"
 asyncpg = "*"
 sqlalchemy = {extras = ["asyncio"] }
 sentence-transformers = "*"
-numpy = "*"
 pgvector = "*"
+boto3 = "*"
 
 [dev-packages]
 pytest = "*"
