@@ -1,19 +1,18 @@
 # ---------- Base layer: shared setup ----------
-FROM public.ecr.aws/lambda/python:3.11 AS base
+FROM python:3.11-slim AS base
 WORKDIR /var/task
 
 # Install pipenv and copy lockfiles
-RUN pip install pipenv
+RUN pip install --no-cache-dir pipenv
 COPY Pipfile Pipfile.lock ./
 
 # ---------- Dev layer: includes dev deps ----------
 FROM base AS dev
 
 # Install dev dependencies into system environment (from Pipfile.lock)
-RUN pipenv install --dev --deploy --system
-
-# Remove pipenv (not needed at runtime)
-RUN pip uninstall -y pipenv
+RUN pipenv install --dev --deploy --system && \
+    pip uninstall -y pipenv && \
+    rm -rf /root/.cache/pip/*
 
 # Copy full application
 COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
@@ -31,13 +30,12 @@ ENTRYPOINT ["python3", "test_invoke.py"]
 FROM base AS prod
 
 # Install ONLY prod dependencies into system environment (from Pipfile.lock)
-RUN pipenv install --deploy --system --ignore-pipfile
-
-# Remove pipenv
-RUN pip uninstall -y pipenv
+RUN pipenv install --deploy --system --ignore-pipfile && \
+    pip uninstall -y pipenv && \
+    rm -rf /root/.cache/pip/*
 
 # Copy app code (don't copy dev/test stuff)
 COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
 
 # AWS Lambda runtime entry point
-CMD ["rewired_af.main.lambda_handler"]
+CMD ["ajf_live_re_wire_ETL.main.lambda_handler"]
