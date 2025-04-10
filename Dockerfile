@@ -12,7 +12,7 @@ FROM base AS dev
 # Install dev dependencies into system environment (from Pipfile.lock)
 RUN pipenv install --dev --deploy --system && \
     pip uninstall -y pipenv && \
-    rm -rf /root/.cache/pip/*
+    rm -rf /root/.cache
 
 # Copy full application
 COPY ajf_live_re_wire_ETL/ ajf_live_re_wire_ETL/
@@ -32,7 +32,7 @@ FROM base AS prod
 # Install ONLY prod dependencies into system environment (from Pipfile.lock)
 RUN pipenv install --deploy --system --ignore-pipfile && \
     pip uninstall -y pipenv && \
-    rm -rf /root/.cache/pip/*
+    rm -rf /root/.cache
 
 # Copy app code (don't copy dev/test stuff)
 COPY ajf_live_re_wire_ETL/main.py ./main.py
