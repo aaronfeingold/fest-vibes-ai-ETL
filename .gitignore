@@ -8,3 +8,4 @@ package/
 __pycache__/
 data/
 secrets/
+.mypy_cache/
