@@ -49,13 +49,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict, Union
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlparse
 
 import aiohttp
 import boto3
 import pytz
 import redis
-from botocore.exceptions import ClientError
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pgvector.sqlalchemy import Vector
@@ -966,7 +965,13 @@ class DatabaseHandler(Services):
             db_url = os.getenv("PG_DATABASE_URL")
             if not db_url:
                 raise ValueError("Database URL not found in environment variables")
-
+            # Detect SSL requirement
+            parsed_url = urlparse(db_url)
+            hostname = parsed_url.hostname or ""
+            # Default to no SSL unless explicitly needed
+            use_ssl = "neon" in hostname or "aws" in hostname
+            # Convert to async-compatible URL
+            connect_args = {"ssl": use_ssl} if use_ssl else {}
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
             engine = create_async_engine(
                 db_url,
@@ -974,7 +979,7 @@ class DatabaseHandler(Services):
                 pool_size=5,
                 max_overflow=10,
                 pool_timeout=30,
-                connect_args={"ssl": True},
+                connect_args=connect_args,
             )
 
             async_session = async_sessionmaker(
@@ -2128,21 +2133,6 @@ class Controllers(Utilities):
                     "error": {
                         "type": error.error_type,
                         "message": error.message,
-                    },
-                    **aws_info,
-                },
-            )
-        except ClientError as e:
-            error_message = e.response["Error"]["Message"]
-            error_code = e.response["Error"]["Code"]
-            logger.error(f"AWS ClientError: {error_code} - {error_message}")
-            return Utilities.generate_response(
-                500,
-                {
-                    "status": "error",
-                    "error": {
-                        "type": ErrorType.AWS_ERROR,
-                        "message": f"AWS error occurred: {error_message}",
                     },
                     **aws_info,
                 },
