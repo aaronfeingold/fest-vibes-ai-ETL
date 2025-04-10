@@ -1,7 +1,7 @@
-# ajf-live-re-wire
+# ajf_live_re_wire_etl
 
 ## Overview
-`ajf-live-re-wire` is a Python ETL Pipeline. It was designed initially to reorganize the WWOZ Livewire, a music calendar of events in New Orleans. Its main purpose now is analyze and evaluate local and-eventually-global music trends.
+`ajf_live_re_wire_etl` is a web scraper that vectorizes data for a RAG chatbot.
 
 ## Prerequisites
 - Python 3.11.10
@@ -217,24 +217,25 @@ The GitHub Actions workflow automates the deployment process to AWS Lambda. Here
 The workflow ensures consistent deployments and reduces manual intervention in the deployment process.
 
 ## Beta User Manual (Not Recommended)
+The provided instructions are meant for building a prod image for the staging lambda
 
 - **build docker image**
 ```
-docker build  --target prod -t ajf-live-re-wire .
+docker build  --target prod -t ajf-live-re-wire-etl-staging .
 ```
 - **login**
 ```
-docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire
+docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging
 ```
 - **tag**
 ```
-docker tag $lambda_name:latest XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
+docker tag ajf-live-re-wire-etl-staging:latest REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
 ```
 - **push to ECR**
 ```
-docker push XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
+docker push REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
 ```
 - **update lambda**
 ```
-aws lambda update-function-code --function-name $lambda_name --image-uri XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
+aws lambda update-function-code --function-name ajf-live-re-wire-etl-staging --image-uri REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
 ```
