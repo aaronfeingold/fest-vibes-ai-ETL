@@ -2064,33 +2064,29 @@ class Controllers(Utilities):
                 NEW_ORLEANS_TZ
             ).date()  # Convert to date for DB storage
 
-            if not dev_env:
-                logger.info("running DeepScraper")
-                deep_scraper = DeepScraper()
-                events = await deep_scraper.run(params)
+            logger.info("running DeepScraper")
+            deep_scraper = DeepScraper()
+            events = await deep_scraper.run(params)
 
-                # Cache the events in Redis
-                redis_cache = RedisCacheHandler()
-                await redis_cache.cache_events(params["date"], events)
+            # Cache the events in Redis
+            redis_cache = RedisCacheHandler()
+            await redis_cache.cache_events(params["date"], events)
 
-                logger.info("save JSON output to file")
-                # save JSON output to file for debugging
-                file_handler = FileHandler()
-                filepath = await file_handler.save_events_local(
-                    events=events, date_str=params["date"]
-                )
-                logger.info(f"Saved event data to file: {filepath}")
+            logger.info("save JSON output to file")
+            # save JSON output to file for debugging
+            file_handler = FileHandler()
+            filepath = await file_handler.save_events_local(
+                events=events, date_str=params["date"]
+            )
+            logger.info(f"Saved event data to file: {filepath}")
 
-                # Upload to S3 if not in dev environment
-                try:
-                    s3_url = await file_handler.upload_to_s3(filepath)
-                    logger.info(f"Successfully uploaded event data to S3: {s3_url}")
-                except Exception as e:
-                    logger.error(f"Failed to upload to S3: {str(e)}")
-                    # Continue execution even if S3 upload fails
-            else:
-                # in development, load events from file for debugging
-                events = await Utilities.load_events_local()
+            # Upload to S3 if not in dev environment
+            try:
+                s3_url = await file_handler.upload_to_s3(filepath)
+                logger.info(f"Successfully uploaded event data to S3: {s3_url}")
+            except Exception as e:
+                logger.error(f"Failed to upload to S3: {str(e)}")
+                # Continue execution even if S3 upload fails
 
             # Save to database
             logger.info("running DatabaseHandler.save_events")
@@ -2221,11 +2217,11 @@ async def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Respo
     http_method = event.get("httpMethod", "GET")
     try:
         if http_method == "POST":
-            return await Controllers.create_events(
-                aws_info, event, dev_env=event.get("devEnv", False)
-            )
+            return await Controllers.create_events(aws_info, event)
         elif http_method == "GET":
-            return Controllers.get_events()
+            return Controllers.get_events(
+                event.get("queryStringParameters", {}).get("date")
+            )
         else:
             return Controllers.generate_response(
                 400,
