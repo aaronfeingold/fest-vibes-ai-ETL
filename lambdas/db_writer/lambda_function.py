@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 
 from shared_lib.models import EventData
-from shared_lib.utils import get_s3_client, get_db_client, publish_sns_message
+from shared_lib.utils import get_db_client, get_s3_client, publish_sns_message
 
 
 def lambda_handler(event, context):

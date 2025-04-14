@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 
 from shared_lib.models import CacheEntry
-from shared_lib.utils import get_redis_client, get_db_client, check_access_level
+from shared_lib.utils import check_access_level, get_db_client, get_redis_client
 
 
 def lambda_handler(event, context):

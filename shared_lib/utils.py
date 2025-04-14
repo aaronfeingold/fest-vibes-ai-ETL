@@ -4,7 +4,7 @@ Common utility functions used across the ETL pipeline
 
 import json
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Any, Dict
 
 import boto3
 import redis
