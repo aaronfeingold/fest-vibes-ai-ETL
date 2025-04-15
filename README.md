@@ -1,14 +1,32 @@
-# ajf_live_re_wire_etl
+# AJF Live Re-Wire ETL Pipeline
 
 ## Overview
-`ajf_live_re_wire_etl` is a web scraper that vectorizes data for a RAG chatbot.
+This project implements an ETL (Extract, Transform, Load) pipeline for scraping event data from a sample website, processing the data, and making it available via a cache and database.
+
+### System Design
+The project is built with a microservices architecture based on AWS Lambda functions and Step Functions for orchestration. The components are:
+
+1. Date Range Generator: Generates a range of dates to scrape
+2. Scraper: Extracts event data from the website and stores it in S3
+3. Loader: Loads event data from S3 into the PostgreSQL database
+4. Cache Manager: Updates Redis cache with event data from the database
+
+### ETL Flow
+1. The Step Function workflow starts with the Date Range Generator to get dates to process
+2. For each date, the workflow executes:
+    a. Scraper component to extract data and store it in S3
+    b. Loader component to process S3 data and insert into the database
+    c. Cache Manager to update the Redis cache with processed data
 
 ## Prerequisites
+- AWS CLI configured with appropriate permissions
 - Python 3.11.10
   - recommended: use `pyenv`
-- `pipenv`
-- postgres
-
+  - `pipenv`
+- PostgreSQL
+- Docker
+- Redis instance
+- Poetry for dependency management
 
 ## Installation
 
@@ -58,6 +76,16 @@ cd ajf-live-re-wire
 
 ## Usage
 
+### Configuration
+The application uses environment variables for configuration. Key configuration items:
+
+- `BASE_URL`: Base URL for the website to scrape
+- `PG_DATABASE_URL`: PostgreSQL database URL
+- `REDIS_URL`: Redis instance URL
+- `S3_BUCKET_NAME`: S3 bucket for storing scraped data
+- `GOOGLE_MAPS_API_KEY`: API key for geocoding services
+See src/shared/config.py for all available configuration options.
+
 ### Activate the Pipenv Shell
 ```sh
 pipenv shell
@@ -78,7 +106,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-## Testing
+## Local Development & Testing
 ### Test Suites
 **Ensure the PYTHONPATH is set**
 ```sh
@@ -87,7 +115,10 @@ PYTHONPATH=. pytest tests/simple_tests.py
 
 ### Test Run
 ```sh
-PYTHONPATH=. python tests/test_invoke.py
+poetry run python -m src.scraper.app
+poetry run python -m src.loader.app
+poetry run python -m src.cache_manager.app
+poetry run python -m src.date_range_generator.app
 ```
 
 ### Python Debugger
@@ -236,3 +267,5 @@ docker push REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-stagin
 ```
 aws lambda update-function-code --function-name ajf-live-re-wire-etl-staging --image-uri REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
 ```
+
+## License
