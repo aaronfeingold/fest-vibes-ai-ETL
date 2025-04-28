@@ -2,15 +2,13 @@
 Geocoding service for converting addresses to geographic coordinates.
 """
 
-import logging
-from typing import Dict, Optional
+import os
+from typing import Dict
 
 import aiohttp
 
-from ..config import config
-from ..errors import ScrapingError, ErrorType
-
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 
 class GeocodingService:
@@ -24,9 +22,9 @@ class GeocodingService:
 
     def __init__(self):
         """Initialize the geocoding service."""
-        self.api_key = config.geocoding.api_key
-        self.base_url = config.geocoding.base_url
-        self.default_coords = config.geocoding.default_coords
+        self.api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+        self.base_url = "https://maps.googleapis.com/maps/api/geocode/json"
+        self.default_coords = base_configs["default_coords"]
 
     async def geocode_address(self, address: str) -> Dict[str, float]:
         """
@@ -36,10 +34,16 @@ class GeocodingService:
         default coordinates for New Orleans (NOLA) are returned.
 
         Args:
-            address: The address to geocode
+            address (str): The address to geocode.
 
         Returns:
-            Dictionary containing the latitude and longitude of the geocoded address
+            dict: A dictionary containing the latitude and longitude of the
+                  geocoded address. If geocoding fails, default coordinates
+                  are returned in the format:
+                  {
+                      "latitude": float,
+                      "longitude": float
+                  }
         """
         # Check if address is empty or for streaming events
         if not address or address.strip() == "" or ".Streaming" in address:
