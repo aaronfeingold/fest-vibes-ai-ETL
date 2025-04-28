@@ -4,19 +4,17 @@ Main application for the database loader component.
 
 import asyncio
 import json
-import logging
-import os
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any, Dict
 
-from shared.config import config
-from shared.errors import DatabaseError, S3Error, ErrorType
-from shared.schemas.dto import EventDTO
-from shared.utils.helpers import S3Helper, generate_response
+from ajf_live_re_wire_ETL.shared.schemas.dto import EventDTO
+from ajf_live_re_wire_ETL.shared.services.s3_service import S3Service
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError, ErrorType, S3Error
+from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 from .service import DatabaseLoader
-
-logger = logging.getLogger(__name__)
 
 
 async def load_from_s3(
@@ -62,8 +60,8 @@ async def load_from_s3(
             logger.info(f"Processing S3 object: {s3_key}")
 
             # Download the file from S3
-            s3_helper = S3Helper()
-            local_path = await s3_helper.download_from_s3(s3_key)
+            s3 = S3Service()
+            local_path = await s3.download_from_s3(s3_key)
 
             # Parse the JSON content
             with open(local_path, "r") as f:
@@ -81,11 +79,11 @@ async def load_from_s3(
             await db_loader.initialize()
 
             # Save events to the database
-            scrape_time = datetime.now(config.timezone).date()
+            scrape_time = datetime.now(base_configs["timezone"]).date()
             await db_loader.save_events(events, scrape_time)
 
             # Clean up the local file
-            await S3Helper.cleanup_local_files(local_path)
+            await s3.cleanup_local_files(local_path)
 
         # Return success response
         return generate_response(
@@ -146,13 +144,6 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the loader as a script for testing."""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    # Create a mock event with an S3 key
     mock_event = {"s3_key": "raw_events/2025/04/14/event_data_20250414_120000.json"}
     mock_context = None
 

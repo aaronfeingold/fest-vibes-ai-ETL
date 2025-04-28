@@ -2,22 +2,20 @@
 Service for loading scraped event data into the database.
 """
 
-import json
-import logging
 from datetime import date, datetime
-from typing import Dict, List
+from typing import List
 
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.db.database import db
-from shared.errors import DatabaseError, ErrorType
-from shared.models.entities import Artist, Event, Genre, Venue
-from shared.schemas.dto import EventDTO
-from shared.services.geocoding import geocoding_service
-
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.db.database import db
+from ajf_live_re_wire_ETL.shared.db.models import Artist, Event, Genre, Venue
+from ajf_live_re_wire_ETL.shared.schemas.dto import EventDTO
+from ajf_live_re_wire_ETL.shared.services.gcp_geocoding_service import geocoding_service
+from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
 class DatabaseLoader:
