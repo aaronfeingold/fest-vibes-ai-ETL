@@ -305,7 +305,7 @@ class Venue(Base):
         latitude (float): Latitude coordinate of the venue.
         longitude (float): Longitude coordinate of the venue.
         capacity (int): Maximum capacity of the venue.
-        is_indoor (bool): Indicates if the venue is an indoor venue. Defaults to True.
+        is_indoors (bool): Indicates if the venue is an indoor venue. Defaults to True.
         last_updated (datetime): Timestamp of the last update to the venue record.
         last_geocoded (datetime): Timestamp of the last geocoding operation for the venue.
 
@@ -336,7 +336,7 @@ class Venue(Base):
     latitude = Column(Float)
     longitude = Column(Float)
     capacity = Column(Integer)
-    is_indoor = Column(Boolean, default=True)
+    is_indoors = Column(Boolean, default=True)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     last_geocoded = Column(
         DateTime(timezone=True)
