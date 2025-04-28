@@ -4,23 +4,17 @@ Main application for the scraper component.
 
 import asyncio
 import json
-import logging
-import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
-from shared.config import config
-from shared.errors import ScrapingError, ErrorType
-from shared.utils.helpers import (
-    S3Helper,
-    generate_response,
-    validate_params,
-    EventDTOEncoder,
-)
+from ajf_live_re_wire_ETL.shared.services.s3_service import S3Service
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.errors import ScrapingError
+from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response, validate_params
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 from .service import DeepScraper
-
-logger = logging.getLogger(__name__)
 
 
 async def scrape_and_store(
@@ -47,33 +41,19 @@ async def scrape_and_store(
 
     scraper = None
     try:
-        # Extract query parameters from the event
         query_params = event.get("queryStringParameters", {})
 
-        # Validate and normalize parameters
         params = validate_params(query_params)
-        scrape_time = datetime.now(config.timezone).date()
 
-        logger.info(f"Scraping events for date: {params['date']}")
-
-        # Create and run the scraper
         scraper = DeepScraper()
         events = await scraper.run(params)
 
-        logger.info(f"Scraped {len(events)} events for date: {params['date']}")
-
-        # Save events to a local file
-        s3_helper = S3Helper()
-        filepath = await s3_helper.save_events_local(
-            events=events, date_str=params["date"]
+        s3 = S3Service()
+        s3_url = await s3.upload_events_to_s3(
+            events=events, scrape_date_str=params["date"]
         )
-        logger.info(f"Saved event data to file: {filepath}")
-
-        # Upload to S3
-        s3_url = await s3_helper.upload_to_s3(filepath)
         logger.info(f"Uploaded event data to S3: {s3_url}")
 
-        # Return success response
         return generate_response(
             200,
             {
@@ -134,16 +114,12 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the scraper as a script for testing."""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
     # Create a mock event and context
     mock_event = {
         "queryStringParameters": {
-            "date": datetime.now(config.timezone).strftime(config.scraper.date_format)
+            "date": datetime.now(base_configs["timezone"]).strftime(
+                base_configs["date_format"]
+            )
         }
     }
     mock_context = None
