@@ -3,18 +3,15 @@ Redis cache utility for caching data.
 """
 
 import json
-import logging
-from datetime import datetime, timedelta
-from typing import List, Optional, TypeVar, Generic, Any
+from datetime import datetime
+from typing import Any, List, Optional, TypeVar
 
 import redis
 
-from ..config import config
-from ..errors import RedisError, ErrorType
-from ..schemas.dto import EventDTO
-from ..utils.helpers import EventDTOEncoder
-
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.schemas import EventDTO
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs, redis_config
+from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 T = TypeVar("T")
 
@@ -27,21 +24,14 @@ class RedisCache:
     def __init__(self):
         """Initialize the Redis connection."""
         try:
-            redis_url = config.redis.url
-            logger.info(f"Initializing Redis with URL pattern: {redis_url[:8]}***")
-
+            redis_url = redis_config["redis_url"]
             self.redis_client = redis.from_url(
                 redis_url,
-                decode_responses=True,
-                socket_timeout=config.redis.socket_timeout,
-                socket_connect_timeout=config.redis.socket_connect_timeout,
-                retry_on_timeout=config.redis.retry_on_timeout,
+                decode_responses=redis_config["redis_decode_responses"],
+                socket_timeout=redis_config["redis_socket_timeout"],
+                socket_connect_timeout=redis_config["redis_socket_connect_timeout"],
+                retry_on_timeout=redis_config["redis_retry_on_timeout"],
             )
-
-            # Test connection
-            self.redis_client.ping()
-            logger.info("Successfully connected to Redis")
-
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {str(e)}")
             # Provide a fallback mechanism if Redis connection fails
@@ -82,8 +72,8 @@ class RedisCache:
             TTL in seconds, or None for no expiration
         """
         try:
-            event_date = datetime.strptime(date_str, config.scraper.date_format).date()
-            today = datetime.now(config.timezone).date()
+            event_date = datetime.strptime(date_str, base_configs["date_format"]).date()
+            today = datetime.now(base_configs["timezone"]).date()
             days_diff = (event_date - today).days
 
             if days_diff < 0:

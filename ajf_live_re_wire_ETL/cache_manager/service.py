@@ -2,19 +2,23 @@
 Service for managing cache operations.
 """
 
-import json
-import logging
-from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List
 
-from shared.cache.redis_cache import redis_cache
-from shared.db.database import db
-from shared.errors import DatabaseError, ErrorType, RedisError
-from shared.models.entities import Event
-from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
 from sqlalchemy import select
 
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.cache.redis_cache import redis_cache
+from ajf_live_re_wire_ETL.shared.db.database import db
+from ajf_live_re_wire_ETL.shared.db.models import Event
+from ajf_live_re_wire_ETL.shared.schemas.dto import (
+    ArtistData,
+    EventData,
+    EventDTO,
+    VenueData,
+)
+from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError, RedisError
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
 class CacheManager:

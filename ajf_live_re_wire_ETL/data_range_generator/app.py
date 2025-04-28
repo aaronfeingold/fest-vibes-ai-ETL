@@ -7,15 +7,13 @@ component for each date in the range.
 """
 
 import json
-import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import List
 
-from shared.config import config
-from shared.errors import ErrorType
-from shared.utils.helpers import generate_response
-
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
 def generate_date_range(days_ahead: int = 30) -> List[str]:
@@ -28,7 +26,7 @@ def generate_date_range(days_ahead: int = 30) -> List[str]:
     Returns:
         List of date strings in YYYY-MM-DD format
     """
-    today = datetime.now(config.timezone).date()
+    today = datetime.now(base_configs["base_tz"]).date()
     date_range = [
         (today + timedelta(days=i)).strftime("%Y-%m-%d")
         for i in range(days_ahead + 1)  # Include today (i=0) and days_ahead
@@ -47,7 +45,6 @@ def lambda_handler(event, context):
     Returns:
         Response object with the generated date range
     """
-    # Record the AWS request ID and log stream name if available
     aws_info = {}
     if context and hasattr(context, "aws_request_id"):
         aws_info = {
@@ -56,10 +53,8 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Extract parameters from the event
         days_ahead = int(event.get("days_ahead", 30))
 
-        # Validate input
         if days_ahead < 0:
             return generate_response(
                 400,
@@ -73,10 +68,8 @@ def lambda_handler(event, context):
                 },
             )
 
-        # Generate the date range
         date_range = generate_date_range(days_ahead)
 
-        # Return the date range
         return {
             "dates": date_range,
             "start_date": date_range[0],
@@ -101,20 +94,12 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the date range generator as a script for testing."""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
     # Create a mock event
     mock_event = {
         "days_ahead": 7,  # Generate dates for the next week
     }
     mock_context = None
 
-    # Run the date range generator
     result = lambda_handler(mock_event, mock_context)
 
-    # Print the result
     print(json.dumps(result, indent=2))

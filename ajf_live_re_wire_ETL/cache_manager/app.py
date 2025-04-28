@@ -4,17 +4,19 @@ Main application for the cache manager component.
 
 import asyncio
 import json
-import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
-from shared.config import config
-from shared.errors import DatabaseError, ErrorType, RedisError
-from shared.utils.helpers import generate_response
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.errors import (
+    DatabaseError,
+    ErrorType,
+    RedisError,
+)
+from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 from .service import CacheManager
-
-logger = logging.getLogger(__name__)
 
 
 async def update_cache(
@@ -100,7 +102,7 @@ async def update_cache(
                 )
         else:
             # Default to today's date if no parameters provided
-            today = datetime.now(config.timezone).strftime("%Y-%m-%d")
+            today = datetime.now(base_configs["timezone"]).strftime("%Y-%m-%d")
             logger.info(f"No date parameters provided, using today's date: {today}")
             event_count = await cache_manager.update_cache_for_date(today)
 
@@ -163,15 +165,11 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the cache manager as a script for testing."""
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
 
-    # Create a mock event
-    today = datetime.now(config.timezone).strftime("%Y-%m-%d")
-    tomorrow = (datetime.now(config.timezone) + timedelta(days=1)).strftime("%Y-%m-%d")
+    today = datetime.now(base_configs["timezone"]).strftime("%Y-%m-%d")
+    tomorrow = (datetime.now(base_configs["timezone"]) + timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
 
     mock_event = {
         # "date": today,  # Uncomment to update a single date
