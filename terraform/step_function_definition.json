@@ -1,0 +1,106 @@
+{
+  "Comment": "ETL Pipeline for AJF Live-Re-Wire",
+  "StartAt": "GenerateDateRange",
+  "States": {
+    "GenerateDateRange": {
+      "Type": "Task",
+      "Resource": "${date_range_generator_arn}",
+      "Parameters": {
+        "days_ahead": 30
+      },
+      "ResultPath": "$.dateRange",
+      "Next": "ProcessDateRange"
+    },
+    "ProcessDateRange": {
+      "Type": "Map",
+      "ItemsPath": "$.dateRange.dates",
+      "MaxConcurrency": 5,
+      "Iterator": {
+        "StartAt": "ScraperTask",
+        "States": {
+          "ScraperTask": {
+            "Type": "Task",
+            "Resource": "${scraper_arn}",
+            "Parameters": {
+              "queryStringParameters": {
+                "date.$": "$"
+              }
+            },
+            "ResultPath": "$.scraperResult",
+            "Next": "CheckScraperStatus"
+          },
+          "CheckScraperStatus": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.scraperResult.statusCode",
+                "NumericEquals": 200,
+                "Next": "LoaderTask"
+              }
+            ],
+            "Default": "ScraperFailed"
+          },
+          "ScraperFailed": {
+            "Type": "Fail",
+            "Error": "ScraperTaskFailed",
+            "Cause": "Scraper task returned non-200 status code"
+          },
+          "LoaderTask": {
+            "Type": "Task",
+            "Resource": "${loader_arn}",
+            "Parameters": {
+              "s3_key.$": "$.scraperResult.body.s3_url"
+            },
+            "ResultPath": "$.loaderResult",
+            "Next": "CheckLoaderStatus"
+          },
+          "CheckLoaderStatus": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.loaderResult.statusCode",
+                "NumericEquals": 200,
+                "Next": "CacheTask"
+              }
+            ],
+            "Default": "LoaderFailed"
+          },
+          "LoaderFailed": {
+            "Type": "Fail",
+            "Error": "LoaderTaskFailed",
+            "Cause": "Loader task returned non-200 status code"
+          },
+          "CacheTask": {
+            "Type": "Task",
+            "Resource": "${cache_manager_arn}",
+            "Parameters": {
+              "date.$": "$"
+            },
+            "ResultPath": "$.cacheResult",
+            "Next": "CheckCacheStatus"
+          },
+          "CheckCacheStatus": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.cacheResult.statusCode",
+                "NumericEquals": 200,
+                "Next": "Success"
+              }
+            ],
+            "Default": "CacheFailed"
+          },
+          "CacheFailed": {
+            "Type": "Fail",
+            "Error": "CacheTaskFailed",
+            "Cause": "Cache task returned non-200 status code"
+          },
+          "Success": {
+            "Type": "Succeed"
+          }
+        }
+      },
+      "End": true
+    }
+  }
+}
