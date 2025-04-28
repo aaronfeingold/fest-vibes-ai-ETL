@@ -33,7 +33,7 @@ class VenueData:
     state: str = ""
     postal_code: str = ""
     full_address: str = ""
-    is_active: Boolean = True
+    is_active: bool = True
     website: str = ""
     wwoz_venue_href: str = ""
     event_artist: str = ""
