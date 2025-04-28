@@ -2,22 +2,25 @@
 Scraper service for extracting event data from a sample website.
 """
 
-import asyncio
-import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 from urllib.error import HTTPError, URLError
 
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
 
-from shared.config import config, DEFAULT_HEADERS
-from shared.errors import ScrapingError, ErrorType
-from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
-from shared.utils.helpers import generate_url
-
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.shared.schemas import (
+    ArtistData,
+    EventData,
+    EventDTO,
+    VenueData,
+)
+from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
+from ajf_live_re_wire_ETL.shared.utils.errors import ScrapingError
+from ajf_live_re_wire_ETL.shared.utils.helpers import generate_url
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
 class DeepScraper:
@@ -41,15 +44,18 @@ class DeepScraper:
             List of EventDTO objects
         """
         try:
-            url = generate_url(params)
-            html = await self.fetch_html(url)
-            return await self.parse_html(html, params["date"])
+            soup = await self.make_soup(
+                endpoint=base_configs["default_endpoint"], params=params
+            )
+            return await self.parse_base_html(soup, params["date"])
         except ScrapingError:
             raise
         except Exception as e:
-            logger.error(f"A {ErrorType.GENERAL_ERROR.value} occurred: {e}")
+            logger.error(
+                f"A {ErrorType.GENERAL_ERROR.value} occurred while scraping: {e}"
+            )
             raise ScrapingError(
-                message=f"An unexpected error occurred: {e}",
+                message=f"An unexpected error occurred while scraping: {e}",
                 error_type=ErrorType.GENERAL_ERROR,
                 status_code=500,
             )
@@ -68,7 +74,12 @@ class DeepScraper:
             self.session = aiohttp.ClientSession()
 
         try:
-            async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
+            async with self.session.get(
+                url,
+                headers=base_configs["default_headers"],
+                max_redirects=10,  # Limit number of redirects
+                timeout=aiohttp.ClientTimeout(total=30),  # 30 second timeout
+            ) as response:
                 if response.status != 200:
                     raise ScrapingError(
                         message=f"Failed to fetch data: HTTP {response.status}",
@@ -90,26 +101,55 @@ class DeepScraper:
                 error_type=ErrorType.URL_ERROR,
                 status_code=503,
             )
+        except aiohttp.ClientError as e:
+            if "too many redirects" in str(e).lower():
+                logger.warning(f"Too many redirects for URL: {url}")
+                return "<html><body><div class='error'>Too many redirects</div></body></html>"
+            raise ScrapingError(
+                message=f"Failed to fetch data: {str(e)}",
+                error_type=ErrorType.FETCH_ERROR,
+                status_code=500,
+            )
         except Exception as e:
+            if "too many redirects" in str(e).lower():
+                logger.warning(f"Too many redirects for URL: {url}")
+                return "<html><body><div class='error'>Too many redirects</div></body></html>"
             raise ScrapingError(
                 message=f"An unexpected error occurred while fetching data: {e}",
                 error_type=ErrorType.FETCH_ERROR,
                 status_code=500,
             )
 
-    async def make_soup(self, endpoint: str) -> BeautifulSoup:
+    async def make_soup(
+        self, endpoint: str | None = None, params: Dict[str, str] = {}
+    ) -> BeautifulSoup:
         """
         Create a BeautifulSoup object from an endpoint.
 
         Args:
             endpoint: Endpoint to fetch
+            params: Query parameters
 
         Returns:
             BeautifulSoup object
         """
         try:
-            html = await self.fetch_html(generate_url({}, endpoint))
-            return BeautifulSoup(html, "html.parser")
+            html = await self.fetch_html(
+                generate_url(
+                    endpoint=endpoint,
+                    params=params,
+                )
+            )
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Check if we got our "too many redirects" placeholder
+            error_div = soup.find("div", class_="error")
+            if error_div and error_div.text == "Too many redirects":
+                logger.warning(f"Skipping URL due to too many redirects: {endpoint}")
+                # Return a minimal soup that will be handled appropriately by calling methods
+                return BeautifulSoup("<html><body></body></html>", "html.parser")
+
+            return soup
         except ScrapingError as e:
             raise ScrapingError(
                 error_type=e.error_type,
@@ -123,21 +163,30 @@ class DeepScraper:
                 status_code=500,
             )
 
-    def get_text_or_default(self, element, tag, class_name, default=""):
+    def get_text_or_default(
+        self,
+        element: PageElement | Tag | NavigableString,
+        tag: str,
+        class_name: str,
+        default: str = "",
+    ) -> str:
         """
-        Get text from an element or return a default value.
+        Get text from a BeautifulSoup element or return a default value.
 
         Args:
-            element: BeautifulSoup element to search in
-            tag: HTML tag to find
-            class_name: Class name to search for
-            default: Default value to return if not found
+            element: BeautifulSoup element to search in. Can be any BeautifulSoup element type
+                   (PageElement, Tag, or NavigableString) that supports the .find() method.
+            tag: HTML tag to find (e.g. 'div', 'span', 'p')
+            class_name: Class name to search for (e.g. 'title', 'description')
+            default: Default value to return if element not found
 
         Returns:
-            Text content or default value
+            str: Text content of the found element (stripped of whitespace) or default value
         """
         found = element.find(tag, class_=class_name)
-        return found.text.strip() if found else default
+        if found and hasattr(found, "text"):
+            return found.text.strip()
+        return default
 
     async def get_venue_data(self, wwoz_venue_href: str, venue_name: str) -> VenueData:
         """
@@ -165,9 +214,7 @@ class DeepScraper:
             is_active=True,
         )
 
-        # find the content div if exists
         content_div = soup.find("div", class_="content")
-
         if content_div is not None:
             try:
                 venue_data.thoroughfare = self.get_text_or_default(
@@ -192,6 +239,7 @@ class DeepScraper:
                     venue_data.website = (
                         website_link.find("a")["href"] if website_link else ""
                     )
+
                 phone_section = content_div.find("div", class_="field-name-field-phone")
                 if phone_section is not None:
                     venue_data.phone_number = phone_section.find("a").text.strip()
@@ -209,6 +257,7 @@ class DeepScraper:
                     )
                     venue_data.is_active = True if status.lower() == "active" else False
             except Exception as e:
+                logger.warning(f"Error parsing venue details for {venue_name}: {e}")
                 raise ScrapingError(
                     message=f"Failed to scrape venue content section: {e}",
                     error_type=ErrorType.PARSE_ERROR,
@@ -411,41 +460,38 @@ class DeepScraper:
         Returns:
             Datetime object with the performance time
         """
-        # Extract the relevant date and time portion
         try:
-            # Parse the time string, e.g. "8:00pm"
             time_stripped = time_str.strip()
             time_pattern = r"\b\d{1,2}:\d{2}\s?(am|pm)\b"
             match = re.search(time_pattern, time_stripped, re.IGNORECASE)
-            # default to 12:00am if no time is found
             extracted_time = match.group() if match else "12:00am"
-            # Combine the date and time into a full string
             combined_str = f"{date_str} {extracted_time}"  # e.g., "1-5-2025 8:00pm"
-
-            # Parse the combined string into a naive datetime
             naive_datetime = datetime.strptime(combined_str, "%Y-%m-%d %I:%M%p")
 
-            # Localize to the central timezone
-            localized_datetime = config.timezone.localize(naive_datetime)
+            localized_datetime = base_configs["timezone"].localize(naive_datetime)
             return localized_datetime
         except Exception as e:
             raise ValueError(
                 f"Error parsing datetime string: {date_str}  and time {time_str}: {e}"
             ) from e
 
-    async def parse_html(self, html: str, date_str: str) -> List[EventDTO]:
+    async def parse_base_html(
+        self, soup: BeautifulSoup, date_str: str
+    ) -> List[EventDTO]:
         """
         Parse HTML content to extract events.
+        Main HTML parsing method that extracts event information from the page.
+        Coordinates calls to venue and artist data scrapers to build complete event records.
+        Can be extended to handle additional data sources by adding new parsing logic.
 
         Args:
-            html: HTML content to parse
+            soup: BeautifulSoup object to parse
             date_str: Date string for the events
 
         Returns:
             List of EventDTO objects
         """
         try:
-            soup = BeautifulSoup(html, "html.parser")
             events = []
             livewire_listing = soup.find("div", class_="livewire-listing")
 
@@ -510,7 +556,7 @@ class DeepScraper:
                         venue_data=venue_data,
                         event_data=event_data,
                         performance_time=performance_time,
-                        scrape_time=datetime.now(config.timezone).date(),
+                        scrape_time=datetime.now(base_configs["timezone"]).date(),
                     )
                     events.append(event)
 
