@@ -23,7 +23,6 @@ async def scrape_and_store(
 ) -> Dict[str, Any]:
     """
     Scrape event data and store it in S3.
-
     Args:
         event: Lambda event object
         context: Lambda context object
@@ -31,7 +30,6 @@ async def scrape_and_store(
     Returns:
         Response object
     """
-    # Record the AWS request ID and log stream name if available
     aws_info = {}
     if context and hasattr(context, "aws_request_id"):
         aws_info = {
@@ -93,7 +91,6 @@ async def scrape_and_store(
             },
         )
     finally:
-        # Clean up resources
         if scraper:
             await scraper.close()
 
@@ -114,7 +111,6 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the scraper as a script for testing."""
-    # Create a mock event and context
     mock_event = {
         "queryStringParameters": {
             "date": datetime.now(base_configs["timezone"]).strftime(
@@ -124,8 +120,6 @@ if __name__ == "__main__":
     }
     mock_context = None
 
-    # Run the scraper
     result = asyncio.run(scrape_and_store(mock_event, mock_context))
 
-    # Print the result
     print(json.dumps(result, indent=2))
