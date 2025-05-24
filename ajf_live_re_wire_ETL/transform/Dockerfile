@@ -12,7 +12,7 @@ RUN poetry install --no-dev
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/loader /app/loader
+COPY src/transform /app/transform
 
 # Second stage: runtime
 FROM python:3.10-slim
@@ -34,4 +34,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "loader.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "transform.app.lambda_handler"]
