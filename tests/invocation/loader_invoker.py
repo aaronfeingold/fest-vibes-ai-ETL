@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.loader.app import process_s3_files
+from ajf_live_re_wire_ETL.loader.app import load_from_s3
 
 # Configure logging
 logging.basicConfig(
@@ -44,10 +44,15 @@ async def invoke_loader(date_str: str) -> Dict[str, Any]:
     Returns:
         The loader's response
     """
-    event = {"queryStringParameters": {"date": date_str}}
+    # Convert date string to S3 key format
+    year, month, day = date_str.split("-")
+    s3_key = (
+        f"raw_events/{year}/{month}/{day}/event_data_{year}{month}{day}_120000.json"
+    )
+    event = {"s3_key": s3_key}
 
     logger.info(f"Invoking loader for date: {date_str}")
-    result = await process_s3_files(event, LambdaTestContext())
+    result = await load_from_s3(event, LambdaTestContext())
     logger.info(f"Loader result: {json.dumps(result, indent=2)}")
     return result
 

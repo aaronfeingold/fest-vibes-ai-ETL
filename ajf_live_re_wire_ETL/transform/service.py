@@ -10,7 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ajf_live_re_wire_ETL.shared.db.database import db
-from ajf_live_re_wire_ETL.shared.db.models import Artist, Event, Genre, Venue
+from ajf_live_re_wire_ETL.shared.db.models import (
+    Artist,
+    ArtistRelation,
+    Event,
+    Genre,
+    Venue,
+)
 from ajf_live_re_wire_ETL.shared.schemas.dto import EventDTO
 from ajf_live_re_wire_ETL.shared.services.gcp_geocoding_service import geocoding_service
 from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError
@@ -172,8 +178,6 @@ class DatabaseLoader:
                             )
 
                         # Check if relation already exists
-                        from shared.models.base import ArtistRelation
-
                         relation_exists = await session.execute(
                             select(ArtistRelation).filter_by(
                                 artist_id=artist.id,
