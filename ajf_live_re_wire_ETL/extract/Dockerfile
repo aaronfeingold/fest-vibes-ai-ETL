@@ -12,7 +12,7 @@ RUN poetry install --no-dev
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/scraper /app/scraper
+COPY src/extract /app/extract
 
 # Second stage: runtime
 FROM python:3.10-slim
@@ -27,4 +27,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "scraper.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "extract.app.lambda_handler"]

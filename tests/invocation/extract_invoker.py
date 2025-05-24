@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.scraper.app import scrape_and_store
+from ajf_live_re_wire_ETL.extract.app import scrape_and_store
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 # Load environment variables
@@ -28,7 +28,7 @@ class LambdaTestContext:
     remaining_time_in_millis = 30000
 
 
-async def invoke_scraper(date_str: str = None) -> Dict[str, Any]:
+async def invoke(date_str: str = None) -> Dict[str, Any]:
     """
     Invoke the scraper for a specific date.
 
@@ -39,7 +39,7 @@ async def invoke_scraper(date_str: str = None) -> Dict[str, Any]:
         The scraper's response
     """
     if date_str is None:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime("%Y-%m-%d")  # set a default date to now
 
     event = {"queryStringParameters": {"date": date_str}}
 
@@ -58,4 +58,4 @@ if __name__ == "__main__":
     parser.add_argument("--date", type=str, help="Date to scrape (YYYY-MM-DD format)")
     args = parser.parse_args()
 
-    asyncio.run(invoke_scraper(args.date))
+    asyncio.run(invoke(args.date))
