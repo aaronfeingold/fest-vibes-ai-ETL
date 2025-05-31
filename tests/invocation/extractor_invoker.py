@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.extract.app import scrape_and_store
+from ajf_live_re_wire_ETL.extractor.app import app
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 # Load environment variables
@@ -28,7 +28,7 @@ class LambdaTestContext:
     remaining_time_in_millis = 30000
 
 
-async def invoke(date_str: str = None) -> Dict[str, Any]:
+async def invoke(date_str: str = datetime.now().strftime("%Y-%m-%d")) -> Dict[str, Any]:
     """
     Invoke the scraper for a specific date.
 
@@ -38,13 +38,10 @@ async def invoke(date_str: str = None) -> Dict[str, Any]:
     Returns:
         The scraper's response
     """
-    if date_str is None:
-        date_str = datetime.now().strftime("%Y-%m-%d")  # set a default date to now
-
     event = {"queryStringParameters": {"date": date_str}}
 
     logger.info(f"Invoking scraper for date: {date_str}")
-    result = await scrape_and_store(event, LambdaTestContext())
+    result = await app(event, LambdaTestContext())
     logger.info(f"Scraper result: {json.dumps(result, indent=2)}")
     return result
 
