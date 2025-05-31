@@ -4,19 +4,12 @@ Test invoker for the loader component.
 
 import asyncio
 import json
-import logging
 from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.loader.app import load_from_s3
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+from ajf_live_re_wire_ETL.loader.app import app
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +27,7 @@ class LambdaTestContext:
     remaining_time_in_millis = 30000
 
 
-async def invoke_loader(date_str: str) -> Dict[str, Any]:
+async def invoke_loader(s3_key: str) -> Dict[str, Any]:
     """
     Invoke the loader for a specific date.
 
@@ -44,15 +37,9 @@ async def invoke_loader(date_str: str) -> Dict[str, Any]:
     Returns:
         The loader's response
     """
-    # Convert date string to S3 key format
-    year, month, day = date_str.split("-")
-    s3_key = (
-        f"raw_events/{year}/{month}/{day}/event_data_{year}{month}{day}_120000.json"
-    )
     event = {"s3_key": s3_key}
-
-    logger.info(f"Invoking loader for date: {date_str}")
-    result = await load_from_s3(event, LambdaTestContext())
+    logger.info(f"Invoking loader for s3_key: {s3_key}")
+    result = await app(event, LambdaTestContext())
     logger.info(f"Loader result: {json.dumps(result, indent=2)}")
     return result
 
@@ -64,8 +51,8 @@ if __name__ == "__main__":
         description="Test invoker for the loader component"
     )
     parser.add_argument(
-        "--date", type=str, required=True, help="Date to process (YYYY-MM-DD format)"
+        "--s3_key", type=str, required=True, help="Date to process (YYYY-MM-DD format)"
     )
     args = parser.parse_args()
 
-    asyncio.run(invoke_loader(args.date))
+    asyncio.run(invoke_loader(args.s3_key))
