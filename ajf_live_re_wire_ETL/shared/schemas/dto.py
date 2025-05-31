@@ -57,6 +57,7 @@ class ArtistData:
     genres: List[str] = field(default_factory=list)
     related_artists: List[str] = field(default_factory=list)
     wwoz_artist_href: str = ""
+    website: str = ""
 
 
 @dataclass

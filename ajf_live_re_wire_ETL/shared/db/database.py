@@ -54,10 +54,31 @@ class Database:
             db_configs["pg_database_url"]
         )
 
+    async def patch_event_schema(self):
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE events ADD COLUMN IF NOT EXISTS scrape_time TIMESTAMP WITH TIME ZONE;"
+                )
+            )
+
+    async def patch_genre_schema(self):
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                text("ALTER TABLE genres ADD COLUMN IF NOT EXISTS description TEXT;")
+            )
+
+    async def patch_venue_schema(self):
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE venues ADD COLUMN IF NOT EXISTS is_streaming BOOLEAN DEFAULT FALSE;"
+                )
+            )
+
     async def initialize(self):
         """Initialize the database engine and session maker."""
         try:
-
             self.engine = create_async_engine(
                 self.db_url,
                 echo=db_configs["echo"],
@@ -67,11 +88,17 @@ class Database:
                 connect_args=self.connect_args,
             )
 
+            # Force metadata refresh
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.reflect)
+                await conn.run_sync(Base.metadata.create_all)
+            await self.patch_event_schema()
+            await self.patch_genre_schema()
+            await self.patch_venue_schema()
             self.async_session = async_sessionmaker(
                 self.engine, class_=AsyncSession, expire_on_commit=False
             )
 
-            await self.create_tables()
             logger.info("Successfully initialized database connection")
             return self
 

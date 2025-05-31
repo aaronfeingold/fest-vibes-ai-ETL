@@ -9,7 +9,6 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     Column,
-    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -84,6 +83,7 @@ class Venue(Base):
     longitude = Column(Float)
     capacity = Column(Integer)
     is_indoors = Column(Boolean, default=True)
+    is_streaming = Column(Boolean, default=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     last_geocoded = Column(
         DateTime(timezone=True)
@@ -211,7 +211,7 @@ class Event(Base):
     venue_name = Column(String)
     performance_time = Column(DateTime(timezone=True), nullable=False)
     end_time = Column(DateTime(timezone=True))
-    scrape_time = Column(Date, nullable=False)
+    scrape_time = Column(DateTime(timezone=True), nullable=False)
     last_updated = Column(DateTime(timezone=True), server_default="now()")
     is_recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)

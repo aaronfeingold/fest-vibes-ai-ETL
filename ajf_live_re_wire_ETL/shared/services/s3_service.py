@@ -2,17 +2,16 @@ import json
 import re
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
+from botocore.exceptions import ClientError
 
 from ajf_live_re_wire_ETL.shared.schemas.dto import EventDTO
 from ajf_live_re_wire_ETL.shared.utils.configs import s3_configs
-from ajf_live_re_wire_ETL.shared.utils.errors import S3Error
+from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, S3Error
 from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
-from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
 class S3Service:
@@ -93,70 +92,38 @@ class S3Service:
                 status_code=500,
             )
 
-    async def download_from_s3(
-        self, s3_key: str, local_path: Optional[str] = None
-    ) -> str:
+    async def read_json_from_s3(self, s3_key: str) -> List[Dict[str, Any]]:
         """
-        Download a file from S3 bucket.
+        Read and parse JSON data directly from S3 without saving to disk.
 
         Args:
-            s3_key: S3 key of the file to download
-            local_path: Optional path to save the downloaded file
+            s3_key: The S3 key to read from
 
         Returns:
-            Path to the downloaded file
+            Parsed JSON data as a list of dictionaries
+
+        Raises:
+            S3Error: If there's an error reading from S3 or parsing the JSON
         """
         try:
-            # Generate a local path if not provided
-            if local_path is None:
-                filename = Path(s3_key).name
-                data_dir = Path("/tmp/data")
-                data_dir.mkdir(exist_ok=True)
-                local_path = str(data_dir / filename)
-
-            logger.info(
-                f"Downloading from S3 bucket {self.bucket_name}, key {s3_key} to {local_path}"
-            )
-
-            # Download the file
-            self.s3_client.download_file(self.bucket_name, s3_key, local_path)
-            logger.info(f"Successfully downloaded file to {local_path}")
-
-            return local_path
-
-        except Exception as e:
-            logger.error(f"Error downloading file from S3: {str(e)}")
+            logger.info(f"Reading JSON from S3: {s3_key}")
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
+            json_data = json.loads(response["Body"].read().decode("utf-8"))
+            logger.info(f"Successfully read and parsed JSON from {s3_key}")
+            return json_data
+        except ClientError as e:
+            error_message = f"Error reading from S3: {str(e)}"
+            logger.error(error_message)
             raise S3Error(
-                message=f"Error downloading file from S3: {str(e)}",
+                message=error_message,
                 error_type=ErrorType.S3_ERROR,
                 status_code=500,
             )
-
-    def list_files(self, prefix: str) -> List[str]:
-        """
-        List files in S3 bucket with a given prefix.
-
-        Args:
-            prefix: S3 key prefix to list
-
-        Returns:
-            List of S3 keys
-        """
-        try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix,
-            )
-
-            if "Contents" not in response:
-                return []
-
-            return [obj["Key"] for obj in response["Contents"]]
-
-        except Exception as e:
-            logger.error(f"Error listing files in S3: {str(e)}")
+        except json.JSONDecodeError as e:
+            error_message = f"Error parsing JSON from S3: {str(e)}"
+            logger.error(error_message)
             raise S3Error(
-                message=f"Error listing files in S3: {str(e)}",
+                message=error_message,
                 error_type=ErrorType.S3_ERROR,
                 status_code=500,
             )
