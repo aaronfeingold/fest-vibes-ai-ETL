@@ -23,7 +23,7 @@ from ajf_live_re_wire_ETL.shared.utils.logger import logger
 from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
-class DeepScraper:
+class ScraperService:
     """
     Scraper for extracting event data from a sample website.
     """
@@ -556,7 +556,7 @@ class DeepScraper:
                         venue_data=venue_data,
                         event_data=event_data,
                         performance_time=performance_time,
-                        scrape_time=datetime.now(base_configs["timezone"]).date(),
+                        scrape_time=datetime.now(base_configs["timezone"]).isoformat(),
                     )
                     events.append(event)
 

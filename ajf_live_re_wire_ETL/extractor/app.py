@@ -14,10 +14,10 @@ from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response, validat
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
 from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
-from .service import DeepScraper
+from .service import ScraperService
 
 
-async def scrape_and_store(
+async def app(
     event: Dict[str, Any],
     context: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
@@ -43,7 +43,7 @@ async def scrape_and_store(
 
         params = validate_params(query_params)
 
-        scraper = DeepScraper()
+        scraper = ScraperService()
         events = await scraper.run(params)
 
         s3 = S3Service()
@@ -106,7 +106,7 @@ def lambda_handler(event, context):
     Returns:
         Response object
     """
-    return asyncio.run(scrape_and_store(event, context))
+    return asyncio.run(app(event, context))
 
 
 if __name__ == "__main__":
@@ -120,6 +120,6 @@ if __name__ == "__main__":
     }
     mock_context = None
 
-    result = asyncio.run(scrape_and_store(mock_event, mock_context))
+    result = asyncio.run(app(mock_event, mock_context))
 
     print(json.dumps(result, indent=2))
