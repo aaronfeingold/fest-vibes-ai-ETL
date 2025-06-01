@@ -4,7 +4,10 @@ Data Transfer Objects (DTOs) for the application.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import List
+from typing import List, Optional
+
+from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, ValidationError
+from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 
 @dataclass
@@ -89,14 +92,47 @@ class EventData:
 @dataclass
 class EventDTO:
     """
-    Data Transfer Object (DTO) representing an event.
+    Data Transfer Object (DTO) representing an event in the system.
+
+    This DTO serves as a standardized format for transferring event data between different
+    layers of the application (database, cache, API). It encapsulates all relevant information
+    about an event, including details about the artist, venue, and the event itself.
+
+    The DTO is designed to be:
+    - Serializable to JSON for caching and API responses
+    - Type-safe through Python's type hints
+    - Self-contained with all necessary event information
+    - Consistent across the application
+
+    Note on Implementation:
+    We use a custom to_dict() method instead of a serialization library like Pydantic
+    to maintain container leanness. While Pydantic would provide cleaner code and
+    automatic serialization, it would require adding another dependency to our containers.
+    This implementation prioritizes minimal dependencies over code elegance, keeping
+    our containers lightweight and focused on their specific responsibilities.
 
     Attributes:
-        artist_data (ArtistData): Information about the artist associated with the event.
-        venue_data (VenueData): Information about the venue where the event is taking place.
-        event_data (EventData): General information about the event.
-        performance_time (datetime): The date and time when the event is scheduled to occur.
-        scrape_time (date): The date when the event data was scraped or retrieved.
+        artist_data (ArtistData): Information about the artist performing at the event,
+            including name, description, genres, and related artists.
+        venue_data (VenueData): Details about the venue hosting the event, including
+            location, contact information, and status.
+        event_data (EventData): Core event information such as date, description,
+            and associated genres.
+        performance_time (datetime): The exact date and time when the event is scheduled
+            to occur, including timezone information.
+        scrape_time (date): The date when this event data was last scraped or updated
+            from the source.
+
+    Example:
+        ```python
+        event = EventDTO(
+            artist_data=ArtistData(name="Artist Name"),
+            venue_data=VenueData(name="Venue Name"),
+            event_data=EventData(event_date=datetime.now()),
+            performance_time=datetime.now(),
+            scrape_time=date.today()
+        )
+        ```
     """
 
     artist_data: ArtistData
@@ -105,44 +141,161 @@ class EventDTO:
     performance_time: datetime
     scrape_time: date
 
+    def validate(self) -> bool:
+        """
+        Validate the EventDTO instance.
+
+        Returns:
+            bool: True if valid, raises ValidationError if invalid
+
+        Raises:
+            ValidationError: If any required fields are missing or invalid
+        """
+        try:
+            # Validate artist data
+            if not self.artist_data.name:
+                raise ValidationError(
+                    message="Artist name is required",
+                    error_type=ErrorType.VALIDATION_ERROR,
+                    status_code=400,
+                )
+
+            # Validate venue data
+            if not self.venue_data.name:
+                raise ValidationError(
+                    message="Venue name is required",
+                    error_type=ErrorType.VALIDATION_ERROR,
+                    status_code=400,
+                )
+
+            # Validate event data
+            if not self.event_data.event_artist:
+                raise ValidationError(
+                    message="Event artist is required",
+                    error_type=ErrorType.VALIDATION_ERROR,
+                    status_code=400,
+                )
+
+            # Validate performance time
+            if not self.performance_time:
+                raise ValidationError(
+                    message="Performance time is required",
+                    error_type=ErrorType.VALIDATION_ERROR,
+                    status_code=400,
+                )
+
+            # Validate scrape time
+            if not self.scrape_time:
+                raise ValidationError(
+                    message="Scrape time is required",
+                    error_type=ErrorType.VALIDATION_ERROR,
+                    status_code=400,
+                )
+
+            return True
+
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during validation: {str(e)}")
+            raise ValidationError(
+                message=f"Unexpected validation error: {str(e)}",
+                error_type=ErrorType.VALIDATION_ERROR,
+                status_code=500,
+            )
+
     def to_dict(self) -> dict:
         """
         Convert the EventDTO to a dictionary for JSON serialization.
 
         Returns:
             dict: A dictionary representation of the EventDTO
+
+        Raises:
+            ValidationError: If the DTO is invalid
         """
-        return {
-            "artist_data": {
-                "name": self.artist_data.name,
-                "description": self.artist_data.description,
-                "wwoz_artist_href": self.artist_data.wwoz_artist_href,
-                "genres": self.artist_data.genres,
-                "related_artists": self.artist_data.related_artists,
-                "website": self.artist_data.website,
-            },
-            "venue_data": {
-                "name": self.venue_data.name,
-                "thoroughfare": self.venue_data.thoroughfare,
-                "phone_number": self.venue_data.phone_number,
-                "locality": self.venue_data.locality,
-                "state": self.venue_data.state,
-                "postal_code": self.venue_data.postal_code,
-                "full_address": self.venue_data.full_address,
-                "is_active": self.venue_data.is_active,
-                "website": self.venue_data.website,
-                "wwoz_venue_href": self.venue_data.wwoz_venue_href,
-                "event_artist": self.venue_data.event_artist,
-            },
-            "event_data": {
-                "event_date": self.event_data.event_date.isoformat(),
-                "wwoz_event_href": self.event_data.wwoz_event_href,
-                "event_artist": self.event_data.event_artist,
-                "wwoz_artist_href": self.event_data.wwoz_artist_href,
-                "description": self.event_data.description,
-                "related_artists": self.event_data.related_artists,
-                "genres": self.event_data.genres,
-            },
-            "performance_time": self.performance_time.isoformat(),
-            "scrape_time": self.scrape_time.isoformat(),
-        }
+        try:
+            # Validate before serialization
+            self.validate()
+
+            return {
+                "artist_data": {
+                    "name": self.artist_data.name,
+                    "description": self.artist_data.description,
+                    "wwoz_artist_href": self.artist_data.wwoz_artist_href,
+                    "genres": self.artist_data.genres,
+                    "related_artists": self.artist_data.related_artists,
+                    "website": self.artist_data.website,
+                },
+                "venue_data": {
+                    "name": self.venue_data.name,
+                    "thoroughfare": self.venue_data.thoroughfare,
+                    "phone_number": self.venue_data.phone_number,
+                    "locality": self.venue_data.locality,
+                    "state": self.venue_data.state,
+                    "postal_code": self.venue_data.postal_code,
+                    "full_address": self.venue_data.full_address,
+                    "is_active": self.venue_data.is_active,
+                    "website": self.venue_data.website,
+                    "wwoz_venue_href": self.venue_data.wwoz_venue_href,
+                    "event_artist": self.venue_data.event_artist,
+                },
+                "event_data": {
+                    "event_date": self.event_data.event_date.isoformat(),
+                    "wwoz_event_href": self.event_data.wwoz_event_href,
+                    "event_artist": self.event_data.event_artist,
+                    "wwoz_artist_href": self.event_data.wwoz_artist_href,
+                    "description": self.event_data.description,
+                    "related_artists": self.event_data.related_artists,
+                    "genres": self.event_data.genres,
+                },
+                "performance_time": self.performance_time.isoformat(),
+                "scrape_time": self.scrape_time.isoformat(),
+            }
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error serializing EventDTO: {str(e)}")
+            raise ValidationError(
+                message=f"Error serializing event data: {str(e)}",
+                error_type=ErrorType.VALIDATION_ERROR,
+                status_code=500,
+            )
+
+    def get_artist_genres(self) -> List[str]:
+        """
+        Get a list of unique genres from both the artist and event.
+
+        Returns:
+            List[str]: List of unique genres
+        """
+        return list(set(self.artist_data.genres + self.event_data.genres))
+
+    def get_venue_location(self) -> str:
+        """
+        Get a formatted venue location string.
+
+        Returns:
+            str: Formatted location string
+        """
+        parts = [
+            self.venue_data.thoroughfare,
+            self.venue_data.locality,
+            self.venue_data.state,
+            self.venue_data.postal_code,
+        ]
+        return ", ".join(filter(None, parts))
+
+    def is_upcoming(self, reference_date: Optional[datetime] = None) -> bool:
+        """
+        Check if the event is upcoming relative to a reference date.
+
+        Args:
+            reference_date: Reference date to compare against (defaults to now)
+
+        Returns:
+            bool: True if the event is upcoming
+        """
+        if reference_date is None:
+            reference_date = datetime.now()
+        return self.performance_time > reference_date
