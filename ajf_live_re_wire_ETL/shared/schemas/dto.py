@@ -104,3 +104,45 @@ class EventDTO:
     event_data: EventData
     performance_time: datetime
     scrape_time: date
+
+    def to_dict(self) -> dict:
+        """
+        Convert the EventDTO to a dictionary for JSON serialization.
+
+        Returns:
+            dict: A dictionary representation of the EventDTO
+        """
+        return {
+            "artist_data": {
+                "name": self.artist_data.name,
+                "description": self.artist_data.description,
+                "wwoz_artist_href": self.artist_data.wwoz_artist_href,
+                "genres": self.artist_data.genres,
+                "related_artists": self.artist_data.related_artists,
+                "website": self.artist_data.website,
+            },
+            "venue_data": {
+                "name": self.venue_data.name,
+                "thoroughfare": self.venue_data.thoroughfare,
+                "phone_number": self.venue_data.phone_number,
+                "locality": self.venue_data.locality,
+                "state": self.venue_data.state,
+                "postal_code": self.venue_data.postal_code,
+                "full_address": self.venue_data.full_address,
+                "is_active": self.venue_data.is_active,
+                "website": self.venue_data.website,
+                "wwoz_venue_href": self.venue_data.wwoz_venue_href,
+                "event_artist": self.venue_data.event_artist,
+            },
+            "event_data": {
+                "event_date": self.event_data.event_date.isoformat(),
+                "wwoz_event_href": self.event_data.wwoz_event_href,
+                "event_artist": self.event_data.event_artist,
+                "wwoz_artist_href": self.event_data.wwoz_artist_href,
+                "description": self.event_data.description,
+                "related_artists": self.event_data.related_artists,
+                "genres": self.event_data.genres,
+            },
+            "performance_time": self.performance_time.isoformat(),
+            "scrape_time": self.scrape_time.isoformat(),
+        }
