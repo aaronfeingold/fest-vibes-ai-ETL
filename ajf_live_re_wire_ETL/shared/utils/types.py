@@ -38,7 +38,6 @@ class ErrorType(Enum):
     GOOGLE_MAPS_API_ERROR = "GOOGLE_MAPS_API_ERROR"
     S3_ERROR = "S3_ERROR"
     REDIS_ERROR = "REDIS_ERROR"
-    VALIDATION_ERROR = "VALIDATION_ERROR"
 
 
 class LambdaContext:

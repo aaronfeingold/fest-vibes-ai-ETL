@@ -10,6 +10,8 @@ import redis
 
 from ajf_live_re_wire_ETL.shared.schemas import EventDTO
 from ajf_live_re_wire_ETL.shared.utils.configs import base_configs, redis_config
+from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, RedisError
+from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 T = TypeVar("T")
@@ -189,25 +191,29 @@ class RedisCache:
             logger.error(f"Error deleting data from cache: {str(e)}")
             return False
 
-    async def cache_events(self, date_str: str, events: List[EventDTO]) -> bool:
+    async def set_events(self, date_str: str, events: List[EventDTO]) -> None:
         """
         Cache events for a specific date.
 
         Args:
-            date_str: Date string to use as identifier
-            events: List of events to cache
+            date_str: Date string in YYYY-MM-DD format
+            events: List of EventDTO objects to cache
 
-        Returns:
-            True if successful, False otherwise
+        Raises:
+            RedisError: If caching fails
         """
         try:
-            # Convert events to dictionaries
-            serialized_events = [event.to_dict() for event in events]
-            ttl = self._get_ttl(date_str)
-            return await self.set("events", date_str, serialized_events, ttl)
+            # Serialize events using EventDTOEncoder
+            serialized_events = json.dumps(events, cls=EventDTOEncoder)
+            await self.set("events", date_str, serialized_events)
+            logger.info(f"Cached {len(events)} events for date {date_str}")
         except Exception as e:
-            logger.error(f"Error caching events: {str(e)}")
-            return False
+            logger.error(f"Failed to cache events: {str(e)}")
+            raise RedisError(
+                message=f"Failed to cache events: {str(e)}",
+                error_type=ErrorType.REDIS_ERROR,
+                status_code=500,
+            )
 
     async def get_cached_events(self, date_str: str) -> Optional[List[dict]]:
         """

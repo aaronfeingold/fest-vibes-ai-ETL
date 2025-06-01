@@ -4,10 +4,7 @@ Data Transfer Objects (DTOs) for the application.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import List, Optional
-
-from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, ValidationError
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from typing import List
 
 
 @dataclass
@@ -99,17 +96,17 @@ class EventDTO:
     about an event, including details about the artist, venue, and the event itself.
 
     The DTO is designed to be:
-    - Serializable to JSON for caching and API responses
+    - Serializable to JSON using EventDTOEncoder
     - Type-safe through Python's type hints
     - Self-contained with all necessary event information
     - Consistent across the application
 
     Note on Implementation:
-    We use a custom to_dict() method instead of a serialization library like Pydantic
-    to maintain container leanness. While Pydantic would provide cleaner code and
-    automatic serialization, it would require adding another dependency to our containers.
-    This implementation prioritizes minimal dependencies over code elegance, keeping
-    our containers lightweight and focused on their specific responsibilities.
+    We use dataclasses with EventDTOEncoder for JSON serialization instead of a serialization
+    library like Pydantic to maintain container leanness. While Pydantic would provide cleaner
+    code and automatic serialization, it would require adding another dependency to our containers.
+    This implementation prioritizes minimal dependencies over code elegance, keeping our
+    containers lightweight and focused on their specific responsibilities.
 
     Attributes:
         artist_data (ArtistData): Information about the artist performing at the event,
@@ -140,162 +137,3 @@ class EventDTO:
     event_data: EventData
     performance_time: datetime
     scrape_time: date
-
-    def validate(self) -> bool:
-        """
-        Validate the EventDTO instance.
-
-        Returns:
-            bool: True if valid, raises ValidationError if invalid
-
-        Raises:
-            ValidationError: If any required fields are missing or invalid
-        """
-        try:
-            # Validate artist data
-            if not self.artist_data.name:
-                raise ValidationError(
-                    message="Artist name is required",
-                    error_type=ErrorType.VALIDATION_ERROR,
-                    status_code=400,
-                )
-
-            # Validate venue data
-            if not self.venue_data.name:
-                raise ValidationError(
-                    message="Venue name is required",
-                    error_type=ErrorType.VALIDATION_ERROR,
-                    status_code=400,
-                )
-
-            # Validate event data
-            if not self.event_data.event_artist:
-                raise ValidationError(
-                    message="Event artist is required",
-                    error_type=ErrorType.VALIDATION_ERROR,
-                    status_code=400,
-                )
-
-            # Validate performance time
-            if not self.performance_time:
-                raise ValidationError(
-                    message="Performance time is required",
-                    error_type=ErrorType.VALIDATION_ERROR,
-                    status_code=400,
-                )
-
-            # Validate scrape time
-            if not self.scrape_time:
-                raise ValidationError(
-                    message="Scrape time is required",
-                    error_type=ErrorType.VALIDATION_ERROR,
-                    status_code=400,
-                )
-
-            return True
-
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during validation: {str(e)}")
-            raise ValidationError(
-                message=f"Unexpected validation error: {str(e)}",
-                error_type=ErrorType.VALIDATION_ERROR,
-                status_code=500,
-            )
-
-    def to_dict(self) -> dict:
-        """
-        Convert the EventDTO to a dictionary for JSON serialization.
-
-        Returns:
-            dict: A dictionary representation of the EventDTO
-
-        Raises:
-            ValidationError: If the DTO is invalid
-        """
-        try:
-            # Validate before serialization
-            self.validate()
-
-            return {
-                "artist_data": {
-                    "name": self.artist_data.name,
-                    "description": self.artist_data.description,
-                    "wwoz_artist_href": self.artist_data.wwoz_artist_href,
-                    "genres": self.artist_data.genres,
-                    "related_artists": self.artist_data.related_artists,
-                    "website": self.artist_data.website,
-                },
-                "venue_data": {
-                    "name": self.venue_data.name,
-                    "thoroughfare": self.venue_data.thoroughfare,
-                    "phone_number": self.venue_data.phone_number,
-                    "locality": self.venue_data.locality,
-                    "state": self.venue_data.state,
-                    "postal_code": self.venue_data.postal_code,
-                    "full_address": self.venue_data.full_address,
-                    "is_active": self.venue_data.is_active,
-                    "website": self.venue_data.website,
-                    "wwoz_venue_href": self.venue_data.wwoz_venue_href,
-                    "event_artist": self.venue_data.event_artist,
-                },
-                "event_data": {
-                    "event_date": self.event_data.event_date.isoformat(),
-                    "wwoz_event_href": self.event_data.wwoz_event_href,
-                    "event_artist": self.event_data.event_artist,
-                    "wwoz_artist_href": self.event_data.wwoz_artist_href,
-                    "description": self.event_data.description,
-                    "related_artists": self.event_data.related_artists,
-                    "genres": self.event_data.genres,
-                },
-                "performance_time": self.performance_time.isoformat(),
-                "scrape_time": self.scrape_time.isoformat(),
-            }
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"Error serializing EventDTO: {str(e)}")
-            raise ValidationError(
-                message=f"Error serializing event data: {str(e)}",
-                error_type=ErrorType.VALIDATION_ERROR,
-                status_code=500,
-            )
-
-    def get_artist_genres(self) -> List[str]:
-        """
-        Get a list of unique genres from both the artist and event.
-
-        Returns:
-            List[str]: List of unique genres
-        """
-        return list(set(self.artist_data.genres + self.event_data.genres))
-
-    def get_venue_location(self) -> str:
-        """
-        Get a formatted venue location string.
-
-        Returns:
-            str: Formatted location string
-        """
-        parts = [
-            self.venue_data.thoroughfare,
-            self.venue_data.locality,
-            self.venue_data.state,
-            self.venue_data.postal_code,
-        ]
-        return ", ".join(filter(None, parts))
-
-    def is_upcoming(self, reference_date: Optional[datetime] = None) -> bool:
-        """
-        Check if the event is upcoming relative to a reference date.
-
-        Args:
-            reference_date: Reference date to compare against (defaults to now)
-
-        Returns:
-            bool: True if the event is upcoming
-        """
-        if reference_date is None:
-            reference_date = datetime.now()
-        return self.performance_time > reference_date
