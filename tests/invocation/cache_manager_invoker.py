@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.cache_manager.app import manage_cache
+from ajf_live_re_wire_ETL.cache_manager.app import app
 
 # Configure logging
 logging.basicConfig(
@@ -49,7 +49,7 @@ async def invoke_cache_manager(date_str: str) -> Dict[str, Any]:
     event = {"queryStringParameters": {"date": date_str}}
 
     logger.info(f"Invoking cache manager for date: {date_str}")
-    result = await manage_cache(event, LambdaTestContext())
+    result = await app(event, LambdaTestContext())
     logger.info(f"Cache manager result: {json.dumps(result, indent=2)}")
     return result
 
