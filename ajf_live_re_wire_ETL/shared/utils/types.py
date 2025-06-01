@@ -19,6 +19,9 @@ class ErrorType(Enum):
         VALUE_ERROR: Represents an error caused by invalid values.
         DATABASE_ERROR: Represents an error related to database operations.
         GOOGLE_MAPS_API_ERROR: Represents an error related to Google Maps API usage.
+        S3_ERROR: Represents an error related to S3 operations.
+        REDIS_ERROR: Represents an error related to Redis operations.
+        VALIDATION_ERROR: Represents an error related to data validation failures.
     """
 
     GENERAL_ERROR = "GENERAL_ERROR"
@@ -35,6 +38,7 @@ class ErrorType(Enum):
     GOOGLE_MAPS_API_ERROR = "GOOGLE_MAPS_API_ERROR"
     S3_ERROR = "S3_ERROR"
     REDIS_ERROR = "REDIS_ERROR"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
 
 
 class LambdaContext:
