@@ -10,7 +10,6 @@ import redis
 
 from ajf_live_re_wire_ETL.shared.schemas import EventDTO
 from ajf_live_re_wire_ETL.shared.utils.configs import base_configs, redis_config
-from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
 from ajf_live_re_wire_ETL.shared.utils.logger import logger
 
 T = TypeVar("T")
@@ -120,7 +119,7 @@ class RedisCache:
             if isinstance(data, (list, dict, str, int, float, bool)):
                 data_json = json.dumps(data)
             else:
-                data_json = json.dumps(data, cls=EventDTOEncoder)
+                data_json = json.dumps(data)
 
             # Set in Redis with TTL if provided
             if ttl is not None:
@@ -201,8 +200,14 @@ class RedisCache:
         Returns:
             True if successful, False otherwise
         """
-        ttl = self._get_ttl(date_str)
-        return await self.set("events", date_str, events, ttl)
+        try:
+            # Convert events to dictionaries
+            serialized_events = [event.to_dict() for event in events]
+            ttl = self._get_ttl(date_str)
+            return await self.set("events", date_str, serialized_events, ttl)
+        except Exception as e:
+            logger.error(f"Error caching events: {str(e)}")
+            return False
 
     async def get_cached_events(self, date_str: str) -> Optional[List[dict]]:
         """
