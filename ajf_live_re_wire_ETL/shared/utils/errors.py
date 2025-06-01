@@ -5,6 +5,34 @@ Error handling for the application.
 from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
 
 
+class ValidationError(Exception):
+    """Custom exception for data validation errors.
+
+    Common status codes:
+    - 400: Bad Request (default) - Invalid data format or missing required fields
+    - 422: Unprocessable Entity - Data validation failed
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_type: ErrorType = ErrorType.VALIDATION_ERROR,
+        status_code: int = 400,
+    ):
+        """
+        Initialize a ValidationError.
+
+        Args:
+            message (str): A human-readable error message describing the validation failure.
+            error_type (ErrorType): The category of the error (default: VALIDATION_ERROR).
+            status_code (int): HTTP-style status code associated with the error (default: 400).
+        """
+        self.message = message
+        self.error_type = error_type
+        self.status_code = status_code
+        super().__init__(self.message)
+
+
 class ScrapingError(Exception):
     """Custom exception for DeepScraper errors.
 
