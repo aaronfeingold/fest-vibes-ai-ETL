@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload  # noqa: F401
 
 from ajf_live_re_wire_ETL.shared.cache.redis_cache import redis_cache
 from ajf_live_re_wire_ETL.shared.db.database import db
-from ajf_live_re_wire_ETL.shared.db.models import Event
+from ajf_live_re_wire_ETL.shared.db.models import Artist, Event
 from ajf_live_re_wire_ETL.shared.schemas.dto import (
     ArtistData,
     EventData,
@@ -55,10 +55,9 @@ class CacheManager:
                     select(Event)
                     .options(
                         selectinload(Event.venue),
-                        selectinload(Event.artist),
+                        selectinload(Event.artist).joinedload(Artist.genres),
+                        selectinload(Event.artist).joinedload(Artist.related_artists),
                         selectinload(Event.genres),
-                        selectinload(Event.artist.genres),
-                        selectinload(Event.artist.related_artists),
                     )
                     .filter(Event.performance_time >= start_datetime)
                     .filter(Event.performance_time <= end_datetime)
