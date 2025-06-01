@@ -5,12 +5,11 @@ Test invoker for the date range generator component.
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.date_range_generator.app import generate_date_ranges
+from ajf_live_re_wire_ETL.param_generator.app import generate_date_range
 
 # Configure logging
 logging.basicConfig(
@@ -38,7 +37,7 @@ class LambdaTestContext:
 
 
 async def invoke_date_range_generator(
-    start_date: str = None, end_date: str = None, days_ahead: int = 7
+    start_date: str = None, days_ahead: int = 7
 ) -> Dict[str, Any]:
     """
     Invoke the date range generator.
@@ -51,16 +50,11 @@ async def invoke_date_range_generator(
     Returns:
         The date range generator's response
     """
-    if start_date is None:
-        start_date = datetime.now().strftime("%Y-%m-%d")
+    event = {
+        "queryStringParameters": {"start_date": start_date, "days_ahead": days_ahead}
+    }
 
-    if end_date is None:
-        end_date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-
-    event = {"queryStringParameters": {"start_date": start_date, "end_date": end_date}}
-
-    logger.info(f"Generating date ranges from {start_date} to {end_date}")
-    result = await generate_date_ranges(event, LambdaTestContext())
+    result = await generate_date_range(event, LambdaTestContext())
     logger.info(f"Date range result: {json.dumps(result, indent=2)}")
     return result
 
@@ -72,12 +66,9 @@ if __name__ == "__main__":
         description="Test invoker for the date range generator"
     )
     parser.add_argument("--start-date", type=str, help="Start date (YYYY-MM-DD format)")
-    parser.add_argument("--end-date", type=str, help="End date (YYYY-MM-DD format)")
     parser.add_argument(
         "--days-ahead", type=int, default=7, help="Number of days to look ahead"
     )
     args = parser.parse_args()
 
-    asyncio.run(
-        invoke_date_range_generator(args.start_date, args.end_date, args.days_ahead)
-    )
+    asyncio.run(invoke_date_range_generator(args.start_date, args.days_ahead))

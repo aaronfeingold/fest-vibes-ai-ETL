@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ajf_live_re_wire_ETL.main import DatabaseHandler, lambda_handler
 
+# TODO: DEPRECATE ME
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

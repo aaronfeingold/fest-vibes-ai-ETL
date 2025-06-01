@@ -1,3 +1,4 @@
+# TODO: DEPRECATE ME
 # ---------- Base layer: shared setup ----------
 FROM public.ecr.aws/lambda/python:3.11 AS base
 WORKDIR /var/task

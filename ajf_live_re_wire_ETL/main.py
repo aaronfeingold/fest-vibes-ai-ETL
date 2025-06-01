@@ -1,3 +1,4 @@
+# TODO: DEPRECATE ME
 """Main module for the ajf_live_re_wire_ETL project.
 
 This module is responsible for scraping event data from a sample website, processing the data,
