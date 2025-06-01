@@ -19,7 +19,7 @@ from ajf_live_re_wire_ETL.shared.utils.logger import logger
 from .service import CacheManager
 
 
-async def update_cache(
+async def app(
     event: Dict[str, Any],
     context: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
@@ -44,9 +44,8 @@ async def update_cache(
     cache_manager = None
     try:
         # Extract parameters from the event
-        date_str = event.get("date")
-        start_date = event.get("start_date")
-        end_date = event.get("end_date")
+        query_params = event.get("queryStringParameters")
+        date_str = query_params["date"] if query_params else None
 
         # Initialize the cache manager
         cache_manager = CacheManager()
@@ -68,38 +67,6 @@ async def update_cache(
                     **aws_info,
                 },
             )
-
-        elif start_date and end_date:
-            # Update cache for a date range
-            logger.info(f"Updating cache for date range: {start_date} to {end_date}")
-            results = await cache_manager.update_cache_for_date_range(
-                start_date, end_date
-            )
-
-            # Check if any updates failed
-            failures = {date: count for date, count in results.items() if count == -1}
-
-            if failures:
-                return generate_response(
-                    207,  # Partial success
-                    {
-                        "status": "partial_success",
-                        "message": f"Cache update completed with {len(failures)} failures",
-                        "results": results,
-                        "failures": list(failures.keys()),
-                        **aws_info,
-                    },
-                )
-            else:
-                return generate_response(
-                    200,
-                    {
-                        "status": "success",
-                        "message": "Successfully updated cache for all dates in range",
-                        "results": results,
-                        **aws_info,
-                    },
-                )
         else:
             # Default to today's date if no parameters provided
             today = datetime.now(base_configs["timezone"]).strftime("%Y-%m-%d")
@@ -160,7 +127,7 @@ def lambda_handler(event, context):
     Returns:
         Response object
     """
-    return asyncio.run(update_cache(event, context))
+    return asyncio.run(app(event, context))
 
 
 if __name__ == "__main__":
@@ -179,7 +146,7 @@ if __name__ == "__main__":
     mock_context = None
 
     # Run the cache manager
-    result = asyncio.run(update_cache(mock_event, mock_context))
+    result = asyncio.run(lambda_handler(mock_event, mock_context))
 
     # Print the result
     print(json.dumps(result, indent=2))
