@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ajf_live_re_wire_ETL.shared.cache.redis_cache import redis_cache
 from ajf_live_re_wire_ETL.shared.db.database import db
@@ -48,14 +49,17 @@ class CacheManager:
             start_datetime = datetime.combine(target_date, datetime.min.time())
             end_datetime = datetime.combine(target_date, datetime.max.time())
 
-            # Ensure timezone-aware datetimes
-            start_datetime = db.timezone.localize(start_datetime)
-            end_datetime = db.timezone.localize(end_datetime)
-
             # Query the events
             async with db.session() as session:
                 result = await session.execute(
                     select(Event)
+                    .options(
+                        selectinload(Event.venue),
+                        selectinload(Event.artist),
+                        selectinload(Event.genres),
+                        selectinload(Event.artist.genres),
+                        selectinload(Event.artist.related_artists),
+                    )
                     .filter(Event.performance_time >= start_datetime)
                     .filter(Event.performance_time <= end_datetime)
                     .order_by(Event.performance_time)
