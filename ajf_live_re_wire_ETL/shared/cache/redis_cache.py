@@ -208,7 +208,7 @@ class RedisCache:
             await self.set("events", date_str, serialized_events)
             logger.info(f"Cached {len(events)} events for date {date_str}")
         except Exception as e:
-            logger.error(f"Failed to cache events: {str(e)}")
+            logger.error(f"redis_cache.set_events: Failed to cache events: {str(e)}")
             raise RedisError(
                 message=f"Failed to cache events: {str(e)}",
                 error_type=ErrorType.REDIS_ERROR,

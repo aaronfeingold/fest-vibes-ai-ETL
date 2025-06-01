@@ -136,21 +136,17 @@ class CacheManager:
 
         Returns:
             Number of events cached
+
+        Raises:
+            DatabaseError: If database operations fail
+            RedisError: If cache operations fail
         """
         try:
             # Get events from the database
             events = await self.get_events_by_date(date_str)
 
             # Cache the events in Redis
-            success = await redis_cache.set_events(date_str, events)
-
-            if not success:
-                raise RedisError(
-                    message=f"Failed to cache events for date {date_str}",
-                    error_type=ErrorType.REDIS_ERROR,
-                    status_code=500,
-                )
-
+            await redis_cache.set_events(date_str, events)
             logger.info(f"Successfully cached {len(events)} events for date {date_str}")
             return len(events)
 
