@@ -142,7 +142,7 @@ class CacheManager:
             events = await self.get_events_by_date(date_str)
 
             # Cache the events in Redis
-            success = await redis_cache.cache_events(date_str, events)
+            success = await redis_cache.set_events(date_str, events)
 
             if not success:
                 raise RedisError(
