@@ -1,4 +1,4 @@
-# AJF Live Re-Wire ETL Pipeline
+# Fest Vibes AI ETL Pipeline
 
 ## Overview
 This project implements an ETL (Extract, Transform, Load) pipeline for scraping event data from a sample website, processing the data, and making it available via a cache and database.
@@ -226,46 +226,130 @@ docker run \
    - Ensure no firewall rules are blocking Redis port (6379)
 
 ## Deployment
-## Github Actions
-The GitHub Actions workflow automates the deployment process to AWS Lambda. Here's what it does:
 
-1. **Build and Test**
-   - Runs on every push to staging or main branch
-   - Sets up Python 3.11 environment
-   - Installs dependencies using pipenv
-   - Runs pytest test suite
-   - Builds Docker prod image (dev image is only local)
+### Prerequisites
 
-2. **AWS Deployment**
-   - Authenticates with AWS using GitHub Secrets
-   - Logs into Amazon ECR (Elastic Container Registry)
-   - Tags and pushes the Docker image to ECR
-   - Updates the either the prod or dev Lambda function with the new image
+Before deploying, you need to set up the following GitHub Secrets in your repository:
+
+1. **AWS Credentials** (required):
+   - `AWS_ACCESS_KEY_ID` - Your AWS access key
+   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+
+2. **Database & Cache** (required):
+   - `DATABASE_URL` - PostgreSQL connection string (e.g., `postgresql://user:pass@host:5432/db`)
+   - `REDIS_URL` - Redis connection string (e.g., `redis://user:pass@host:6379`)
+
+3. **External APIs** (optional):
+   - `GOOGLE_MAPS_API_KEY` - Google Maps API key for geocoding
+
+### GitHub Actions Deployment
+
+The GitHub Actions workflow automates the complete deployment process:
+
+1. **Test Phase**
+   - Runs pytest on the test suite
+   - Ensures code quality before deployment
+
+2. **Build & Push Phase**
+   - Builds Docker images for all 4 components:
+     - `extractor` - Extracts event data from websites
+     - `loader` - Processes S3 data into PostgreSQL database
+     - `cache_manager` - Updates Redis cache with latest data
+     - `date_range_generator` - Generates date ranges for processing
+   - Pushes images to AWS ECR with both commit SHA and `latest` tags
+
+3. **Deploy Phase**
+   - Runs `terraform apply` to create/update infrastructure:
+     - S3 buckets (state storage + data storage)
+     - IAM roles and policies
+     - Lambda functions using the Docker images
+     - Step Function for orchestration
+
+### Architecture Overview
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   GitHub Push   │───▶│  GitHub Actions │───▶│   AWS ECR       │
+│   (main branch) │    │   (CI/CD)       │    │   (Docker Images)│
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Terraform     │◀───│   Lambda        │◀───│   Step Function │
+│   (Infrastructure)│    │   Functions     │    │   (Orchestrator) │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   S3 Bucket     │    │   PostgreSQL    │    │   Redis Cache   │
+│   (Data Storage)│    │   (Vector DB)   │    │   (API Cache)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                        ┌─────────────────┐
+                        │   Next.js App   │
+                        │   (Frontend)    │
+                        └─────────────────┘
+```
+
+### ETL Pipeline Flow
+
+The Step Function orchestrates the complete ETL pipeline:
+
+1. **Date Range Generator** → Generates dates to process (next 30 days)
+2. **Extractor** → Extracts event data for each date and stores in S3
+3. **Loader** → Processes S3 data into PostgreSQL (with vector embeddings)
+4. **Cache Manager** → Queries database and updates Redis cache
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Date Generator  │───▶│   Extractor     │───▶│     Loader      │───▶│  Cache Manager  │
+│ (Lambda)        │    │   (Lambda)      │    │   (Lambda)      │    │   (Lambda)      │
+│                 │    │                 │    │                 │    │                 │
+│ • Generate      │    │ • Extract HTML  │    │ • Read S3 data  │    │ • Query DB      │
+│   date ranges   │    │ • Parse events  │    │ • Vectorize     │    │ • Update Redis  │
+│ • Pass to       │    │ • Store in S3   │    │ • Store in DB   │    │ • Cache results │
+│   extractor     │    │ • Trigger loader│    │ • Trigger cache │    │ • Ready for API │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │                       │
+         ▼                       ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Date List     │    │   S3 Bucket     │    │   PostgreSQL    │    │   Redis Cache   │
+│   (JSON Array)  │    │   (Raw Data)    │    │   (Vector DB)   │    │   (API Data)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Data Flow
+
+1. **Input**: Date ranges generated by the date generator
+2. **Extract**: Scraper pulls event data from websites for each date
+3. **Transform**: Loader processes raw data, creates vector embeddings, and stores in PostgreSQL
+4. **Load**: Cache manager queries the database and updates Redis with the latest data
+5. **Output**: Next.js app consumes Redis cache for fast API responses
+
+### Infrastructure Components
+
+- **S3 Buckets**:
+  - `fest-vibes-ai-ETL` - Terraform state storage
+  - `fest-vibes-ai-data` - Raw scraped data storage
+
+- **Lambda Functions**:
+  - `fest-vibes-ai-date-range-generator`
+  - `fest-vibes-ai-extractor`
+  - `fest-vibes-ai-loader`
+  - `fest-vibes-ai-cache-manager`
+
+- **Step Function**: `fest-vibes-ai-etl-pipeline` - Orchestrates the entire workflow
+
+- **Database**: PostgreSQL with vector extensions for similarity search
+
+- **Cache**: Redis for fast API responses
+
+### Monitoring & Debugging
+
+- **CloudWatch Logs**: Each Lambda function logs to CloudWatch
+- **Step Function Console**: Monitor ETL pipeline execution
+- **S3 Console**: View stored data and artifacts
+- **Terraform State**: Track infrastructure changes
 
 The workflow ensures consistent deployments and reduces manual intervention in the deployment process.
-
-## Beta User Manual (Not Recommended)
-The provided instructions are meant for building a prod image for the staging lambda
-
-- **build docker image**
-```
-docker build  --target prod -t ajf-live-re-wire-etl-staging .
-```
-- **login**
-```
-docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging
-```
-- **tag**
-```
-docker tag ajf-live-re-wire-etl-staging:latest REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
-```
-- **push to ECR**
-```
-docker push REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
-```
-- **update lambda**
-```
-aws lambda update-function-code --function-name ajf-live-re-wire-etl-staging --image-uri REDACTED.dkr.ecr.us-east-1.amazonaws.com/ajf-live-re-wire-etl-staging:latest
-```
-
-## License
