@@ -75,7 +75,15 @@ jobs:
       - name: Terraform Init
         run: |
           cd terraform/environments/prod
-          terraform init
+          terraform init -backend-config="bucket=fest-vibes-ai-ETL" -backend-config="key=prod/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="encrypt=true" -backend-config="dynamodb_table=fest-vibes-ai-ETL-terraform-locks"
+      - name: Create terraform.tfvars
+        run: |
+          cd terraform/environments/prod
+          cat > terraform.tfvars << EOF
+          database_url = "${{ secrets.DATABASE_URL }}"
+          redis_url = "${{ secrets.REDIS_URL }}"
+          google_maps_api_key = "${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          EOF
       - name: Terraform Apply
         run: |
           cd terraform/environments/prod

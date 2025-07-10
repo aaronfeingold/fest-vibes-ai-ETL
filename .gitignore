@@ -9,3 +9,4 @@ __pycache__/
 data/
 secrets/
 .mypy_cache/
+terraform/environments/prod/terraform.tfvars

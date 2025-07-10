@@ -1,0 +1,8 @@
+# Database connection URL (PostgreSQL)
+database_url = "postgresql://username:password@hostname:5432/database_name"
+
+# Redis connection URL
+redis_url = "redis://username:password@hostname:6379"
+
+# Google Maps API key (optional)
+google_maps_api_key = "your-google-maps-api-key"
