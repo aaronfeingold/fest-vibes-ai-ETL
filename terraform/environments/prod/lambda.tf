@@ -23,13 +23,13 @@ resource "aws_lambda_function" "date_range_generator" {
   }
 }
 
-# Scraper Lambda
-resource "aws_lambda_function" "scraper" {
-  function_name = "fest-vibes-ai-scraper"
-  description   = "Scrapes event data from website"
+# Extractor Lambda
+resource "aws_lambda_function" "extractor" {
+  function_name = "fest-vibes-ai-extractor"
+  description   = "Extracts event data from website"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.scraper.repository_uri}:latest"
+  image_uri     = "${data.aws_ecr_repository.extractor.repository_uri}:latest"
   timeout       = 300
   memory_size   = 1024
 
@@ -41,7 +41,7 @@ resource "aws_lambda_function" "scraper" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-scraper"
+    Name        = "fest-vibes-ai-extractor"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
@@ -100,8 +100,8 @@ data "aws_ecr_repository" "date_range_generator" {
   name = "ajf-live-re-wire-date_range_generator"
 }
 
-data "aws_ecr_repository" "scraper" {
-  name = "ajf-live-re-wire-scraper"
+data "aws_ecr_repository" "extractor" {
+  name = "ajf-live-re-wire-extractor"
 }
 
 data "aws_ecr_repository" "loader" {

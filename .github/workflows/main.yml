@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [scraper, loader, cache_manager, date_range_generator]
+        component: [extractor, loader, cache_manager, date_range_generator]
     steps:
       - uses: actions/checkout@v3
       - name: Configure AWS credentials

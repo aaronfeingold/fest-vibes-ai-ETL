@@ -23,38 +23,38 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         Iterator = {
           StartAt = "ScraperTask"
           States = {
-            "ScraperTask" = {
+            "ExtractorTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.scraper.invoke_arn
+              Resource = aws_lambda_function.extractor.invoke_arn
               Parameters = {
                 queryStringParameters = {
                   "date.$" = "$"
                 }
               }
-              ResultPath = "$.scraperResult"
-              Next = "CheckScraperStatus"
+              ResultPath = "$.extractorResult"
+              Next = "CheckExtractorStatus"
             }
-            "CheckScraperStatus" = {
+            "CheckExtractorStatus" = {
               Type = "Choice"
               Choices = [
                 {
-                  Variable = "$.scraperResult.statusCode"
+                  Variable = "$.extractorResult.statusCode"
                   NumericEquals = 200
                   Next = "LoaderTask"
                 }
               ]
-              Default = "ScraperFailed"
+              Default = "ExtractorFailed"
             }
-            "ScraperFailed" = {
+            "ExtractorFailed" = {
               Type = "Fail"
-              Error = "ScraperTaskFailed"
-              Cause = "Scraper task returned non-200 status code"
+              Error = "ExtractorTaskFailed"
+              Cause = "Extractor task returned non-200 status code"
             }
             "LoaderTask" = {
               Type = "Task"
               Resource = aws_lambda_function.loader.invoke_arn
               Parameters = {
-                s3_key = "$.scraperResult.body.s3_url"
+                s3_key = "$.extractorResult.body.s3_url"
               }
               ResultPath = "$.loaderResult"
               Next = "CheckLoaderStatus"
@@ -156,7 +156,7 @@ resource "aws_iam_policy" "step_function_lambda" {
         ]
         Resource = [
           aws_lambda_function.date_range_generator.arn,
-          aws_lambda_function.scraper.arn,
+          aws_lambda_function.extractor.arn,
           aws_lambda_function.loader.arn,
           aws_lambda_function.cache_manager.arn
         ]
