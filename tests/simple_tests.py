@@ -294,3 +294,169 @@ async def test_is_attribute_non_empty():
     # Test with missing attribute
     test_obj = type("TestObj", (), {})()
     assert scraper.is_attribute_non_empty(test_obj, "name") is False
+
+
+@pytest.mark.asyncio
+async def test_html_to_json_parsing():
+    """Test that HTML can be successfully parsed into JSON-compatible EventDTO objects."""
+    scraper = ScraperService()
+
+    # Realistic HTML structure that would be found on the website
+    html = """
+    <div class="livewire-listing">
+        <div class="panel panel-default">
+            <h3 class="panel-title"><a href="/venues/123">Snug Harbor</a></h3>
+            <div class="panel-body">
+                <div class="row">
+                    <div class="calendar-info">
+                        <a href="/events/456">Ellis Marsalis Quartet</a>
+                        <p>Jazz</p>
+                        <p>8:00pm</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="calendar-info">
+                        <a href="/events/789">Kermit Ruffins</a>
+                        <p>Jazz, Blues</p>
+                        <p>10:30pm</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel panel-default">
+            <h3 class="panel-title"><a href="/venues/456">Preservation Hall</a></h3>
+            <div class="panel-body">
+                <div class="row">
+                    <div class="calendar-info">
+                        <a href="/events/101">Preservation Hall Jazz Band</a>
+                        <p>Traditional Jazz</p>
+                        <p>8:00pm</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+
+    # Create BeautifulSoup object
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Mock the deeper scrape methods to return realistic data
+    scraper.get_venue_data = AsyncMock(
+        side_effect=[
+            VenueData(
+                name="Snug Harbor",
+                thoroughfare="626 Frenchmen St",
+                locality="New Orleans",
+                state="LA",
+                postal_code="70116",
+                wwoz_venue_href="/venues/123",
+            ),
+            VenueData(
+                name="Preservation Hall",
+                thoroughfare="726 St Peter St",
+                locality="New Orleans",
+                state="LA",
+                postal_code="70116",
+                wwoz_venue_href="/venues/456",
+            ),
+        ]
+    )
+
+    scraper.get_event_data = AsyncMock(
+        side_effect=[
+            (
+                EventData(
+                    event_date=datetime.now().date(),
+                    event_artist="Ellis Marsalis Quartet",
+                    wwoz_event_href="/events/456",
+                    description="Jazz performance",
+                ),
+                ArtistData(
+                    name="Ellis Marsalis Quartet",
+                    genres=["Jazz"],
+                    wwoz_artist_href="/artists/456",
+                ),
+            ),
+            (
+                EventData(
+                    event_date=datetime.now().date(),
+                    event_artist="Kermit Ruffins",
+                    wwoz_event_href="/events/789",
+                    description="Jazz and Blues performance",
+                ),
+                ArtistData(
+                    name="Kermit Ruffins",
+                    genres=["Jazz", "Blues"],
+                    wwoz_artist_href="/artists/789",
+                ),
+            ),
+            (
+                EventData(
+                    event_date=datetime.now().date(),
+                    event_artist="Preservation Hall Jazz Band",
+                    wwoz_event_href="/events/101",
+                    description="Traditional Jazz performance",
+                ),
+                ArtistData(
+                    name="Preservation Hall Jazz Band",
+                    genres=["Traditional Jazz"],
+                    wwoz_artist_href="/artists/101",
+                ),
+            ),
+        ]
+    )
+
+    # Parse the HTML into EventDTO objects
+    events = await scraper.parse_base_html(soup, "2025-03-21")
+
+    # Verify we got the expected number of events
+    assert len(events) == 3
+
+    # Verify the first event structure
+    first_event = events[0]
+    assert first_event.venue_data.name == "Snug Harbor"
+    assert first_event.artist_data.name == "Ellis Marsalis Quartet"
+    assert first_event.event_data.event_artist == "Ellis Marsalis Quartet"
+    assert "Jazz" in first_event.artist_data.genres
+
+    # Verify the second event structure
+    second_event = events[1]
+    assert second_event.venue_data.name == "Snug Harbor"
+    assert second_event.artist_data.name == "Kermit Ruffins"
+    assert second_event.event_data.event_artist == "Kermit Ruffins"
+    assert "Jazz" in second_event.artist_data.genres
+    assert "Blues" in second_event.artist_data.genres
+
+    # Verify the third event structure
+    third_event = events[2]
+    assert third_event.venue_data.name == "Preservation Hall"
+    assert third_event.artist_data.name == "Preservation Hall Jazz Band"
+    assert third_event.event_data.event_artist == "Preservation Hall Jazz Band"
+    assert "Traditional Jazz" in third_event.artist_data.genres
+
+    # Verify that all events have required fields for JSON serialization
+    for event in events:
+        assert hasattr(event, "venue_data")
+        assert hasattr(event, "artist_data")
+        assert hasattr(event, "event_data")
+        assert hasattr(event, "performance_time")
+        assert hasattr(event, "scrape_time")
+
+        # Verify venue data has required fields
+        assert hasattr(event.venue_data, "name")
+        assert hasattr(event.venue_data, "thoroughfare")
+
+        # Verify artist data has required fields
+        assert hasattr(event.artist_data, "name")
+        assert hasattr(event.artist_data, "genres")
+
+        # Verify event data has required fields
+        assert hasattr(event.event_data, "event_artist")
+        assert hasattr(event.event_data, "wwoz_event_href")
+
+    # Verify the mock methods were called the expected number of times
+    assert scraper.get_venue_data.call_count == 2  # Two venues
+    assert scraper.get_event_data.call_count == 3  # Three events
