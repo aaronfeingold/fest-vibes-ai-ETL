@@ -4,14 +4,28 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-urlopen = "*"
 beautifulsoup4 = "*"
-ipdb = "*"
 pytz = "*"
-botocore = "*"
+redis = "*"
+psycopg2-binary = "*"
+python-dotenv = "*"
+aiohttp = "*"
+asyncpg = "*"
+sqlalchemy = {extras = ["asyncio"] }
+sentence-transformers = "*"
+pgvector = "*"
+boto3 = "*"
 
 [dev-packages]
 pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
+pytest-mock = "*"
+types-pytz = "*"
 
 [requires]
 python_version = "3.11"

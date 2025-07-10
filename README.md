@@ -1,13 +1,32 @@
-# ajf-live-re-wire
+# Fest Vibes AI ETL Pipeline
 
 ## Overview
-`ajf-live-re-wire` is a Python ETL Pipeline. It was designed initially to reorganize the WWOZ Livewire, a music calendar of events in New Orleans. Its main purpose now is analyze and evaluate trends within local and-eventually-global music trends.
+This project implements an ETL (Extract, Transform, Load) pipeline for scraping event data from a sample website, processing the data, and making it available via a cache and database.
+
+### System Design
+The project is built with a microservices architecture based on AWS Lambda functions and Step Functions for orchestration. The components are:
+
+1. Date Range Generator: Generates a range of dates to scrape
+2. Scraper: Extracts event data from the website and stores it in S3
+3. Loader: Loads event data from S3 into the PostgreSQL database
+4. Cache Manager: Updates Redis cache with event data from the database
+
+### ETL Flow
+1. The Step Function workflow starts with the Date Range Generator to get dates to process
+2. For each date, the workflow executes:
+    a. Scraper component to extract data and store it in S3
+    b. Loader component to process S3 data and insert into the database
+    c. Cache Manager to update the Redis cache with processed data
 
 ## Prerequisites
+- AWS CLI configured with appropriate permissions
 - Python 3.11.10
   - recommended: use `pyenv`
-- `pipenv`
-
+  - `pipenv`
+- PostgreSQL
+- Docker
+- Redis instance
+- Poetry for dependency management
 
 ## Installation
 
@@ -57,6 +76,16 @@ cd ajf-live-re-wire
 
 ## Usage
 
+### Configuration
+The application uses environment variables for configuration. Key configuration items:
+
+- `BASE_URL`: Base URL for the website to scrape
+- `PG_DATABASE_URL`: PostgreSQL database URL
+- `REDIS_URL`: Redis instance URL
+- `S3_BUCKET_NAME`: S3 bucket for storing scraped data
+- `GOOGLE_MAPS_API_KEY`: API key for geocoding services
+See src/shared/config.py for all available configuration options.
+
 ### Activate the Pipenv Shell
 ```sh
 pipenv shell
@@ -67,49 +96,260 @@ pipenv shell
 pipenv install
 ```
 
-### Run
+### Use pre-commit hooks
+1. Install the git hooks:
 ```sh
-python main.py
+pre-commit install
+```
+2. Run pre-commit on all files:
+```sh
+pre-commit run --all-files
 ```
 
-## Testing
+## Local Development & Testing
 ### Test Suites
 **Ensure the PYTHONPATH is set**
 ```sh
-PYTHONPATH=. pytest tests/test_main.py
+PYTHONPATH=. pytest tests/simple_tests.py
 ```
+
+### Test Run
+```sh
+poetry run python -m src.scraper.app
+poetry run python -m src.loader.app
+poetry run python -m src.cache_manager.app
+poetry run python -m src.date_range_generator.app
+```
+
+### Python Debugger
+**Python: Select Interpreter**
+
+- Press Cmd+Shift+P (Mac) or Ctrl+Shift+P (Windows/Linux)
+- Type "Python: Select Interpreter"
+- Look for the interpreter that points to your Pipenv virtual environment (it should be something like ~/.local/share/virtualenvs/your-project-name-xxxxx/bin/python)
+
+**Run Python: Pipenv Debug with VSCode's Debugger tool**
+
 ### Docker Image
 - Lambda Invocation:
 ```
 # build and tag locally
 docker build --target dev -t ajf-live-re-wire:dev .
 # create new container from latest dev build
-docker run ajf-live-re-wire:dev
+docker run \
+  --network host \
+  -v ~/.aws:/root/.aws \
+  -e PG_DATABASE_URL=postgresql://{username}:{password}@localhost:{db_port}/{db_name} \
+  -e BASE_URL="https://www.wwoz.org" \
+  -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
+  -e S3_BUCKET_NAME=your-data-bucket-name \
+  -e REDIS_URL=rediss://username:password@hostname:port \
+  ajf-live-re-wire:dev
+```
+- Note: `rediss` with 2x 's' is not a typo. This indicates ssl, which is the case for the hosted Upstash service.
+#### Redis Configuration for Local Development
+
+1. **Configure Redis to Accept External Connections**
+   ```bash
+   # Edit Redis configuration
+   sudo nano /etc/redis/redis.conf
+
+   # Find and modify the bind line to:
+   bind 0.0.0.0
+
+   # Restart Redis
+   sudo systemctl restart redis
+   ```
+
+2. **Verify Redis is Running**
+   ```bash
+   # Check Redis status
+   sudo systemctl status redis
+
+   # Test Redis connection
+   redis-cli ping
+   ```
+
+3. **Querying Redis Data**
+   ```bash
+   # Connect to Redis CLI
+   redis-cli
+
+   # List all keys (our events are stored with pattern "events:YYYY-MM-DD")
+   KEYS "events:*"
+
+   # Get a specific event date's data
+   GET "events:2024-03-20"
+
+   # Monitor Redis in real-time
+   redis-cli monitor
+
+   # Check Redis memory usage
+   redis-cli info memory
+
+   # Get all keys with their TTL (time to live)
+   redis-cli --scan --pattern "events:*" | while read key; do echo "$key: $(redis-cli ttl "$key")"; done
+   ```
+
+4. **Debugging Redis Connection Issues**
+
+   a. **From Host Machine:**
+   ```bash
+   # Test basic Redis connectivity
+   redis-cli ping
+
+   # Check Redis is listening on all interfaces
+   netstat -tulpn | grep 6379
+   ```
+
+   b. **From Docker Container:**
+   ```bash
+   # Enter the container
+   docker exec -it <container_id> bash
+
+   # Test Redis connection using Python
+   python3
+   >>> import redis
+   >>> r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+   >>> print(r.ping())  # Should return True
+   ```
+
+   c. **Common Issues:**
+   - If `redis-cli` is not found in container: This is expected as we don't install it in the container
+   - Connection refused: Check Redis is running and configured to accept external connections
+   - Timeout: Verify network settings and firewall rules
+   - Authentication error: Check if Redis password is required and properly configured
+
+4. **Network Configuration**
+   - Using `--network host` allows the container to access Redis on localhost
+   - For non-host networking, use the host machine's IP address instead of localhost
+   - Ensure no firewall rules are blocking Redis port (6379)
+
+## Deployment
+
+### Prerequisites
+
+Before deploying, you need to set up the following GitHub Secrets in your repository:
+
+1. **AWS Credentials** (required):
+   - `AWS_ACCESS_KEY_ID` - Your AWS access key
+   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+
+2. **Database & Cache** (required):
+   - `DATABASE_URL` - PostgreSQL connection string (e.g., `postgresql://user:pass@host:5432/db`)
+   - `REDIS_URL` - Redis connection string (e.g., `redis://user:pass@host:6379`)
+
+3. **External APIs** (optional):
+   - `GOOGLE_MAPS_API_KEY` - Google Maps API key for geocoding
+
+### GitHub Actions Deployment
+
+The GitHub Actions workflow automates the complete deployment process:
+
+1. **Test Phase**
+   - Runs pytest on the test suite
+   - Ensures code quality before deployment
+
+2. **Build & Push Phase**
+   - Builds Docker images for all 4 components:
+     - `extractor` - Extracts event data from websites
+     - `loader` - Processes S3 data into PostgreSQL database
+     - `cache_manager` - Updates Redis cache with latest data
+     - `date_range_generator` - Generates date ranges for processing
+   - Pushes images to AWS ECR with both commit SHA and `latest` tags
+
+3. **Deploy Phase**
+   - Runs `terraform apply` to create/update infrastructure:
+     - S3 buckets (state storage + data storage)
+     - IAM roles and policies
+     - Lambda functions using the Docker images
+     - Step Function for orchestration
+
+### Architecture Overview
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   GitHub Push   │───▶│  GitHub Actions │───▶│   AWS ECR       │
+│   (main branch) │    │   (CI/CD)       │    │   (Docker Images)│
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Terraform     │◀───│   Lambda        │◀───│   Step Function │
+│   (Infrastructure)│    │   Functions     │    │   (Orchestrator) │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   S3 Bucket     │    │   PostgreSQL    │    │   Redis Cache   │
+│   (Data Storage)│    │   (Vector DB)   │    │   (API Cache)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                        ┌─────────────────┐
+                        │   Next.js App   │
+                        │   (Frontend)    │
+                        └─────────────────┘
 ```
 
+### ETL Pipeline Flow
 
-# Deployment
-## Under Construction: Github Actions
+The Step Function orchestrates the complete ETL pipeline:
 
-## Beta User Manual
+1. **Date Range Generator** → Generates dates to process (next 30 days)
+2. **Extractor** → Extracts event data for each date and stores in S3
+3. **Loader** → Processes S3 data into PostgreSQL (with vector embeddings)
+4. **Cache Manager** → Queries database and updates Redis cache
 
-- **build docker image**
 ```
-docker build  --target prod -t ajf-live-re-wire .
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Date Generator  │───▶│   Extractor     │───▶│     Loader      │───▶│  Cache Manager  │
+│ (Lambda)        │    │   (Lambda)      │    │   (Lambda)      │    │   (Lambda)      │
+│                 │    │                 │    │                 │    │                 │
+│ • Generate      │    │ • Extract HTML  │    │ • Read S3 data  │    │ • Query DB      │
+│   date ranges   │    │ • Parse events  │    │ • Vectorize     │    │ • Update Redis  │
+│ • Pass to       │    │ • Store in S3   │    │ • Store in DB   │    │ • Cache results │
+│   extractor     │    │ • Trigger loader│    │ • Trigger cache │    │ • Ready for API │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │                       │
+         ▼                       ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Date List     │    │   S3 Bucket     │    │   PostgreSQL    │    │   Redis Cache   │
+│   (JSON Array)  │    │   (Raw Data)    │    │   (Vector DB)   │    │   (API Data)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
-- **login**
-```
-docker login -u AWS -p $(aws ecr get-login-password --region us-east-1) XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire
-```
-- **tag**
-```
-docker tag $lambda_name:latest XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
-```
-- **push to ECR**
-```
-docker push XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
-```
-- **update lambda**
-```
-aws lambda update-function-code --function-name $lambda_name --image-uri XXXXX.dkr.ecr.us-east-1.amazonaws.com/ajf-life-re-wire:latest
-```
+
+### Data Flow
+
+1. **Input**: Date ranges generated by the date generator
+2. **Extract**: Scraper pulls event data from websites for each date
+3. **Transform**: Loader processes raw data, creates vector embeddings, and stores in PostgreSQL
+4. **Load**: Cache manager queries the database and updates Redis with the latest data
+5. **Output**: Next.js app consumes Redis cache for fast API responses
+
+### Infrastructure Components
+
+- **S3 Buckets**:
+  - `fest-vibes-ai-ETL` - Terraform state storage
+  - `fest-vibes-ai-data` - Raw scraped data storage
+
+- **Lambda Functions**:
+  - `fest-vibes-ai-date-range-generator`
+  - `fest-vibes-ai-extractor`
+  - `fest-vibes-ai-loader`
+  - `fest-vibes-ai-cache-manager`
+
+- **Step Function**: `fest-vibes-ai-etl-pipeline` - Orchestrates the entire workflow
+
+- **Database**: PostgreSQL with vector extensions for similarity search
+
+- **Cache**: Redis for fast API responses
+
+### Monitoring & Debugging
+
+- **CloudWatch Logs**: Each Lambda function logs to CloudWatch
+- **Step Function Console**: Monitor ETL pipeline execution
+- **S3 Console**: View stored data and artifacts
+- **Terraform State**: Track infrastructure changes
+
+The workflow ensures consistent deployments and reduces manual intervention in the deployment process.

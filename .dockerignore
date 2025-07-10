@@ -1,0 +1,17 @@
+# Ignore secrets
+secrets/
+*.DS_Store
+.env
+
+# other stuff
+*.pyc
+*.pyo
+*.pyd
+*.log
+__pycache__/
+data/
+CICD/
+tests/
+.vscode/
+.pytest_cache/
+.github/

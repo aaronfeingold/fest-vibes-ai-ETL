@@ -7,6 +7,19 @@
       "request": "launch",
       "module": "pytest",
       "justMyCode": true
+    },
+    {
+      "name": "Python: Pipenv Debug",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/test_invoke.py",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}" // Makes imports relative to the workspace root
+      },
+      "envFile": "${workspaceFolder}/.env", // Optional: Load environment variables from .env
+      "cwd": "${workspaceFolder}", // Set the working directory to your project root
+      "justMyCode": true
     }
   ]
 }
