@@ -7,8 +7,8 @@ from typing import Dict
 
 import aiohttp
 
-from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.shared.utils.configs import base_configs
+from ETL.shared.utils.logger import logger
 
 
 class GeocodingService:

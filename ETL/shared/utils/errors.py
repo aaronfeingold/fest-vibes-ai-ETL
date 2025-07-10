@@ -2,7 +2,7 @@
 Error handling for the application.
 """
 
-from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
+from ETL.shared.utils.types import ErrorType
 
 
 class ScrapingError(Exception):

@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.param_generator.app import generate_date_range
+from ETL.param_generator.app import generate_date_range
 
 # Configure logging
 logging.basicConfig(

@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.cache_manager.app import app
+from ETL.cache_manager.app import app
 
 # Configure logging
 logging.basicConfig(

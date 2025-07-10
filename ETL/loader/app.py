@@ -10,16 +10,11 @@ import asyncio
 import json
 from typing import Any, Dict
 
-from ajf_live_re_wire_ETL.shared.schemas.dto import (
-    ArtistData,
-    EventData,
-    EventDTO,
-    VenueData,
-)
-from ajf_live_re_wire_ETL.shared.services.s3_service import S3Service
-from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError, ErrorType, S3Error
-from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from ETL.shared.services.s3_service import S3Service
+from ETL.shared.utils.errors import DatabaseError, ErrorType, S3Error
+from ETL.shared.utils.helpers import generate_response
+from ETL.shared.utils.logger import logger
 
 from .service import DatabaseService
 

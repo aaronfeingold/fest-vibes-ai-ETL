@@ -8,18 +8,13 @@ from typing import Dict, List
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload  # noqa: F401
 
-from ajf_live_re_wire_ETL.shared.cache.redis_cache import redis_cache
-from ajf_live_re_wire_ETL.shared.db.database import db
-from ajf_live_re_wire_ETL.shared.db.models import Artist, Event
-from ajf_live_re_wire_ETL.shared.schemas.dto import (
-    ArtistData,
-    EventData,
-    EventDTO,
-    VenueData,
-)
-from ajf_live_re_wire_ETL.shared.utils.errors import DatabaseError, RedisError
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
-from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
+from ETL.shared.cache.redis_cache import redis_cache
+from ETL.shared.db.database import db
+from ETL.shared.db.models import Artist, Event
+from ETL.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from ETL.shared.utils.errors import DatabaseError, RedisError
+from ETL.shared.utils.logger import logger
+from ETL.shared.utils.types import ErrorType
 
 
 class CacheManager:

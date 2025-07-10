@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from ajf_live_re_wire_ETL.shared.schemas.dto import EventDTO
-from ajf_live_re_wire_ETL.shared.utils.configs import s3_configs
-from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, S3Error
-from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.shared.schemas.dto import EventDTO
+from ETL.shared.utils.configs import s3_configs
+from ETL.shared.utils.errors import ErrorType, S3Error
+from ETL.shared.utils.helpers import EventDTOEncoder
+from ETL.shared.utils.logger import logger
 
 
 class S3Service:

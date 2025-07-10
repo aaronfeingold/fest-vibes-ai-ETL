@@ -7,14 +7,10 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
-from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
-from ajf_live_re_wire_ETL.shared.utils.errors import (
-    DatabaseError,
-    ErrorType,
-    RedisError,
-)
-from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.shared.utils.configs import base_configs
+from ETL.shared.utils.errors import DatabaseError, ErrorType, RedisError
+from ETL.shared.utils.helpers import generate_response
+from ETL.shared.utils.logger import logger
 
 from .service import CacheManager
 

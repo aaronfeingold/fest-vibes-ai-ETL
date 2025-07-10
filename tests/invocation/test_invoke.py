@@ -10,7 +10,7 @@ import pytz
 from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
-from ajf_live_re_wire_ETL.main import DatabaseHandler, lambda_handler
+from ETL.main import DatabaseHandler, lambda_handler
 
 # TODO: DEPRECATE ME
 

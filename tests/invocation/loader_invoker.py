@@ -8,8 +8,8 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ajf_live_re_wire_ETL.loader.app import app
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.loader.app import app
+from ETL.shared.utils.logger import logger
 
 # Load environment variables
 load_dotenv()

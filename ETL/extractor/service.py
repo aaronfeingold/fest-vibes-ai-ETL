@@ -10,17 +10,12 @@ from urllib.error import HTTPError, URLError
 import aiohttp
 from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
 
-from ajf_live_re_wire_ETL.shared.schemas import (
-    ArtistData,
-    EventData,
-    EventDTO,
-    VenueData,
-)
-from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
-from ajf_live_re_wire_ETL.shared.utils.errors import ScrapingError
-from ajf_live_re_wire_ETL.shared.utils.helpers import generate_url
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
-from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
+from ETL.shared.schemas import ArtistData, EventData, EventDTO, VenueData
+from ETL.shared.utils.configs import base_configs
+from ETL.shared.utils.errors import ScrapingError
+from ETL.shared.utils.helpers import generate_url
+from ETL.shared.utils.logger import logger
+from ETL.shared.utils.types import ErrorType
 
 
 class ScraperService:

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ajf_live_re_wire_ETL.main import (
+from ETL.main import (
     ArtistData,
     Controllers,
     DeepScraper,

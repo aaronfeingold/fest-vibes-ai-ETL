@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from ajf_live_re_wire_ETL.main import DatabaseHandler
+from ETL.main import DatabaseHandler
 
 # Add the project root to the Python path
 project_root = str(Path(__file__).parent.parent)

@@ -8,11 +8,11 @@ from typing import Any, List, Optional, TypeVar
 
 import redis
 
-from ajf_live_re_wire_ETL.shared.schemas import EventDTO
-from ajf_live_re_wire_ETL.shared.utils.configs import base_configs, redis_config
-from ajf_live_re_wire_ETL.shared.utils.errors import ErrorType, RedisError
-from ajf_live_re_wire_ETL.shared.utils.helpers import EventDTOEncoder
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
+from ETL.shared.schemas import EventDTO
+from ETL.shared.utils.configs import base_configs, redis_config
+from ETL.shared.utils.errors import ErrorType, RedisError
+from ETL.shared.utils.helpers import EventDTOEncoder
+from ETL.shared.utils.logger import logger
 
 T = TypeVar("T")
 

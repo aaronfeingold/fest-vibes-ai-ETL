@@ -1,5 +1,5 @@
 {
-  "Comment": "ETL Pipeline for AJF Live-Re-Wire",
+  "Comment": "ETL Pipeline for Fest Vibes AI",
   "StartAt": "GenerateDateRange",
   "States": {
     "GenerateDateRange": {

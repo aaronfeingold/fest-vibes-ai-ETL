@@ -10,10 +10,10 @@ import json
 from datetime import datetime, timedelta
 from typing import List
 
-from ajf_live_re_wire_ETL.shared.utils.configs import base_configs
-from ajf_live_re_wire_ETL.shared.utils.helpers import generate_response
-from ajf_live_re_wire_ETL.shared.utils.logger import logger
-from ajf_live_re_wire_ETL.shared.utils.types import ErrorType
+from ETL.shared.utils.configs import base_configs
+from ETL.shared.utils.helpers import generate_response
+from ETL.shared.utils.logger import logger
+from ETL.shared.utils.types import ErrorType
 
 
 def generate_date_range(days_ahead: int = 30) -> List[str]:
