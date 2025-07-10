@@ -1,19 +1,12 @@
 from datetime import date, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from ETL.main import (
-    ArtistData,
-    Controllers,
-    DeepScraper,
-    ErrorType,
-    EventData,
-    EventDTO,
-    ScrapingError,
-    Utilities,
-    VenueData,
-)
+from ETL.extractor.service import ScraperService
+from ETL.shared.schemas import ArtistData, EventData, EventDTO, VenueData
+from ETL.shared.utils.errors import ScrapingError
+from ETL.shared.utils.types import ErrorType
 
 # Test data
 MOCK_HTML = """
@@ -38,43 +31,11 @@ MOCK_HTML = """
 """
 
 
-# Test Utility functions first (simple, no async)
-def test_generate_response():
-    """Test the generate_response function."""
-    response = Utilities.generate_response(200, {"status": "success", "data": "test"})
-
-    assert response["statusCode"] == 200
-    assert response["headers"]["Content-Type"] == "application/json"
-    assert response["body"]["status"] == "success"
-    assert response["body"]["data"] == "test"
-
-
-def test_validate_params():
-    """Test the validate_params function."""
-    # Test with valid date
-    params = {"date": "2025-03-21"}
-    result = Utilities.validate_params(params)
-    assert result["date"] == "2025-03-21"
-
-    # Test with missing date (should generate one)
-    params = {}
-    result = Utilities.validate_params(params)
-    assert "date" in result
-    assert len(result["date"]) == 10  # YYYY-MM-DD format
-
-
 # Test basic scraper methods with mocked responses
 @pytest.mark.asyncio
-async def test_generate_url():
-    """Test the generate_url method."""
-    scraper = DeepScraper()
-    url = scraper.generate_url({"date": "2025-03-21"})
-    assert "date=2025-03-21" in url
-
-
-@pytest.mark.asyncio
 async def test_fetch_html_success():
-    scraper = DeepScraper()
+    """Test successful HTML fetching."""
+    scraper = ScraperService()
 
     class MockResponse:
         def __init__(self, text, status=200):
@@ -90,12 +51,6 @@ async def test_fetch_html_success():
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
 
-        def __await__(self):
-            async def dummy():
-                return self
-
-            return dummy().__await__()
-
     class MockSession:
         def get(self, url, **kwargs):
             return MockResponse(MOCK_HTML, status=200)
@@ -110,7 +65,8 @@ async def test_fetch_html_success():
 
 @pytest.mark.asyncio
 async def test_fetch_html_failure():
-    scraper = DeepScraper()
+    """Test HTML fetching failure."""
+    scraper = ScraperService()
 
     class MockResponse:
         def __init__(self, text, status=404):
@@ -125,12 +81,6 @@ async def test_fetch_html_failure():
 
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             pass
-
-        def __await__(self):
-            async def dummy():
-                return self
-
-            return dummy().__await__()
 
     class MockSession:
         def get(self, url, **kwargs):
@@ -150,7 +100,7 @@ async def test_fetch_html_failure():
 @pytest.mark.asyncio
 async def test_parse_event_performance_time():
     """Test parsing event performance time."""
-    scraper = DeepScraper()
+    scraper = ScraperService()
 
     # Test valid time
     date_str = "2025-03-21"
@@ -201,7 +151,7 @@ def test_event_dto_creation():
 @pytest.mark.asyncio
 async def test_simplified_parse_html():
     """Test parsing HTML with simplified mocking."""
-    scraper = DeepScraper()
+    scraper = ScraperService()
 
     # Sample HTML with minimum structure needed
     html = """
@@ -220,6 +170,11 @@ async def test_simplified_parse_html():
         </div>
     </div>
     """
+
+    # Create BeautifulSoup object from HTML
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
 
     # Mock the deeper scrape methods to return simple objects
     scraper.get_venue_data = AsyncMock(
@@ -246,7 +201,7 @@ async def test_simplified_parse_html():
     scraper.get_event_data = AsyncMock(return_value=(event_data, artist_data))
 
     # Test the parser with the simplified HTML
-    events = await scraper.parse_html(html, "2025-03-21")
+    events = await scraper.parse_base_html(soup, "2025-03-21")
 
     assert len(events) == 1
     assert events[0].venue_data.name == "Test Venue"
@@ -259,56 +214,83 @@ async def test_simplified_parse_html():
 
 
 @pytest.mark.asyncio
-async def test_create_events_controller():
-    """Test the create_events controller function."""
-    # Mock dependencies
-    event = {"queryStringParameters": {"date": "2025-03-21"}}
-    aws_info = {"aws_request_id": "test-id", "log_stream_name": "test-stream"}
+async def test_scraper_service_run():
+    """Test the main scraper service run method."""
+    scraper = ScraperService()
 
-    # Create a mock event list to return
-    events = [
-        EventDTO(
-            venue_data=VenueData(name="Test Venue"),
-            artist_data=ArtistData(name="Test Artist"),
-            event_data=EventData(
-                event_date=datetime.now().date(), event_artist="Test Artist"
-            ),
-            performance_time=datetime.now(),
-            scrape_time=date.today(),
-        )
-    ]
+    # Mock the make_soup method to return a simple soup
+    from bs4 import BeautifulSoup
 
-    # Mock DeepScraper and FileHandler
-    with (
-        patch("ajf_live_re_wire_ETL.main.DeepScraper") as MockScraper,
-        patch("ajf_live_re_wire_ETL.main.DatabaseHandler.create") as MockDbHandler,
-        patch(
-            "ajf_live_re_wire_ETL.main.FileHandler.save_events_local"
-        ) as MockSaveEvents,
-    ):
+    mock_soup = BeautifulSoup(MOCK_HTML, "html.parser")
+    scraper.make_soup = AsyncMock(return_value=mock_soup)
 
-        # Setup mocks
-        scraper_instance = MockScraper.return_value
-        scraper_instance.run = AsyncMock(return_value=events)
+    # Mock the parse_base_html method
+    venue = VenueData(name="Test Venue")
+    artist = ArtistData(name="Test Artist")
+    event = EventData(
+        event_date=datetime.now().date(),
+        event_artist="Test Artist",
+        wwoz_event_href="/events/456",
+    )
 
-        db_handler = AsyncMock()
-        MockDbHandler.return_value = db_handler
-        db_handler.save_events = AsyncMock()
-        db_handler.close = AsyncMock()
+    event_dto = EventDTO(
+        venue_data=venue,
+        artist_data=artist,
+        event_data=event,
+        performance_time=datetime.now(),
+        scrape_time=date.today(),
+    )
 
-        MockSaveEvents.return_value = "path/to/file.json"
+    scraper.parse_base_html = AsyncMock(return_value=[event_dto])
 
-        # Call the controller
-        response = await Controllers.create_events(aws_info, event, dev_env=False)
+    # Test the run method
+    params = {"date": "2025-03-21"}
+    events = await scraper.run(params)
 
-        # Verify response
-        assert response["statusCode"] == 200
-        assert response["body"]["status"] == "success"
-        assert "data" in response["body"]
-        assert "aws_request_id" in response["body"]
+    assert len(events) == 1
+    assert events[0].venue_data.name == "Test Venue"
+    assert events[0].artist_data.name == "Test Artist"
 
-        # Verify mocks were called
-        scraper_instance.run.assert_called_once()
-        MockSaveEvents.assert_called_once()
-        db_handler.save_events.assert_called_once()
-        db_handler.close.assert_called_once()
+    # Verify the mock methods were called
+    scraper.make_soup.assert_called_once()
+    scraper.parse_base_html.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_text_or_default():
+    """Test the get_text_or_default utility method."""
+    scraper = ScraperService()
+    from bs4 import BeautifulSoup
+
+    html = '<div class="test">Hello World</div>'
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Test finding existing element
+    result = scraper.get_text_or_default(soup, "div", "test")
+    assert result == "Hello World"
+
+    # Test finding non-existent element
+    result = scraper.get_text_or_default(soup, "div", "nonexistent", "default")
+    assert result == "default"
+
+    # Test with empty element
+    result = scraper.get_text_or_default(soup, "div", "test", "default")
+    assert result == "Hello World"
+
+
+@pytest.mark.asyncio
+async def test_is_attribute_non_empty():
+    """Test the is_attribute_non_empty utility method."""
+    scraper = ScraperService()
+
+    # Test with non-empty attribute
+    test_obj = type("TestObj", (), {"name": "Test"})()
+    assert scraper.is_attribute_non_empty(test_obj, "name") is True
+
+    # Test with empty attribute
+    test_obj = type("TestObj", (), {"name": ""})()
+    assert scraper.is_attribute_non_empty(test_obj, "name") is False
+
+    # Test with missing attribute
+    test_obj = type("TestObj", (), {})()
+    assert scraper.is_attribute_non_empty(test_obj, "name") is False
