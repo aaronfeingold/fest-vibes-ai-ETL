@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from ETL.cache_manager.app import app
+from src.cache_manager.app import app
 
 # Configure logging
 logging.basicConfig(

@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import text
 
-from ETL.main import DatabaseHandler
+from src.main import DatabaseHandler
 
 # Configure logging
 logging.basicConfig(

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from ETL.main import DatabaseHandler
+from src.main import DatabaseHandler
 
 # Add the project root to the Python path
 project_root = str(Path(__file__).parent.parent)

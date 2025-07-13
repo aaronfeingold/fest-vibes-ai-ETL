@@ -7,12 +7,12 @@ import json
 from datetime import datetime
 from typing import Any, Dict
 
-from ETL.shared.services.s3_service import S3Service
-from ETL.shared.utils.configs import base_configs
-from ETL.shared.utils.errors import ScrapingError
-from ETL.shared.utils.helpers import generate_response, validate_params
-from ETL.shared.utils.logger import logger
-from ETL.shared.utils.types import ErrorType
+from src.shared.services.s3_service import S3Service
+from src.shared.utils.configs import base_configs
+from src.shared.utils.errors import ScrapingError
+from src.shared.utils.helpers import generate_response, validate_params
+from src.shared.utils.logger import logger
+from src.shared.utils.types import ErrorType
 
 from .service import ScraperService
 

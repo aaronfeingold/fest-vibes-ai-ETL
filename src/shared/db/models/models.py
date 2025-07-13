@@ -20,14 +20,14 @@ from sqlalchemy import (
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from ETL.shared.db.models.relationships import (
+from src.shared.db.models.relationships import (
     ARTIST_GENRE_TABLE,
     ARTIST_RELATION_TABLE,
     EVENT_GENRE_TABLE,
     VENUE_ARTIST_TABLE,
     VENUE_GENRE_TABLE,
 )
-from ETL.shared.utils.configs import base_configs
+from src.shared.utils.configs import base_configs
 
 from . import Base
 

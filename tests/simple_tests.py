@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ETL.extractor.service import ScraperService
-from ETL.shared.schemas import ArtistData, EventData, EventDTO, VenueData
-from ETL.shared.utils.errors import ScrapingError
-from ETL.shared.utils.types import ErrorType
+from src.extractor.service import ScraperService
+from src.shared.schemas import ArtistData, EventData, EventDTO, VenueData
+from src.shared.utils.errors import ScrapingError
+from src.shared.utils.types import ErrorType
 
 # Test data
 MOCK_HTML = """

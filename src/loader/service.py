@@ -9,14 +9,14 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ETL.shared.db.database import db
-from ETL.shared.db.models import Artist, ArtistRelation, Event, Genre, Venue
-from ETL.shared.schemas.dto import EventDTO
-from ETL.shared.services.gcp_geocoding_service import geocoding_service
-from ETL.shared.utils.configs import base_configs
-from ETL.shared.utils.errors import DatabaseError
-from ETL.shared.utils.logger import logger
-from ETL.shared.utils.types import ErrorType
+from src.shared.db.database import db
+from src.shared.db.models import Artist, ArtistRelation, Event, Genre, Venue
+from src.shared.schemas.dto import EventDTO
+from src.shared.services.gcp_geocoding_service import geocoding_service
+from src.shared.utils.configs import base_configs
+from src.shared.utils.errors import DatabaseError
+from src.shared.utils.logger import logger
+from src.shared.utils.types import ErrorType
 
 
 class DatabaseService:
