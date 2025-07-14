@@ -10,6 +10,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+        PG_DATABASE_URL: ${{ secrets.PG_DATABASE_URL }}
+        BASE_URL: "https://www.wwoz.org"
+        S3_BUCKET_NAME: "fest-vibes-ai-etl-pipeline-data"
+        S3_REGION: "us-east-1"
+        REDIS_URL: "redis://localhost:6379"
+        GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -79,9 +86,11 @@ jobs:
         run: |
           cd terraform/environments/prod
           cat > terraform.tfvars << EOF
-          database_url = "${{ secrets.DATABASE_URL }}"
+          database_url = "${{ secrets.PG_DATABASE_URL }}"
           redis_url = "${{ secrets.REDIS_URL }}"
           google_maps_api_key = "${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          base_url = "${{ secrets.BASE_URL }}"
+          s3_bucket_name = "${{ secrets.S3_BUCKET_NAME }}"
           EOF
       - name: Terraform Apply
         run: |
