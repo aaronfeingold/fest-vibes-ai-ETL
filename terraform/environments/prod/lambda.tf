@@ -12,7 +12,7 @@ resource "aws_lambda_function" "date_range_generator" {
 
   environment {
     variables = {
-      BASE_URL = "https://www.wwoz.org"
+      BASE_URL = var.base_url
     }
   }
 
@@ -35,7 +35,7 @@ resource "aws_lambda_function" "extractor" {
 
   environment {
     variables = {
-      BASE_URL = "https://www.wwoz.org"
+      BASE_URL = var.base_url
       S3_BUCKET_NAME = aws_s3_bucket.data_bucket.id
     }
   }
