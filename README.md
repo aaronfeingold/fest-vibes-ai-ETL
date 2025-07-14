@@ -229,18 +229,78 @@ docker run \
 
 ### Prerequisites
 
-Before deploying, you need to set up the following GitHub Secrets in your repository:
+Before deploying, you need to set up the following resources and GitHub Secrets:
 
-1. **AWS Credentials** (required):
-   - `AWS_ACCESS_KEY_ID` - Your AWS access key
-   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+#### 1. Terraform Backend Setup (Required)
 
-2. **Database & Cache** (required):
-   - `DATABASE_URL` - PostgreSQL connection string (e.g., `postgresql://user:pass@host:5432/db`)
-   - `REDIS_URL` - Redis connection string (e.g., `redis://user:pass@host:6379`)
+The deployment uses Terraform to manage infrastructure. You must create these resources manually before the first deployment:
 
-3. **External APIs** (optional):
-   - `GOOGLE_MAPS_API_KEY` - Google Maps API key for geocoding
+**S3 Bucket for Terraform State:**
+```bash
+# Create the S3 bucket for Terraform state
+aws s3 mb s3://<tf-state-bucket-name>--region us-east-1
+
+# Enable versioning on the bucket
+aws s3api put-bucket-versioning --bucket <tf-state-bucket-name> --versioning-configuration Status=Enabled
+
+# Enable encryption on the S3 bucket
+aws s3api put-bucket-encryption \
+  --bucket <tf-state-bucket-name> \
+  --server-side-encryption-configuration '{
+    "Rules": [
+      {
+        "ApplyServerSideEncryptionByDefault": {
+          "SSEAlgorithm": "AES256"
+        }
+      }
+    ]
+  }'
+
+# Block public access on the S3 bucket
+aws s3api put-public-access-block \
+  --bucket <tf-state-bucket-name> \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+**DynamoDB Table for State Locking:**
+```bash
+# Create the DynamoDB table for Terraform state locking
+aws dynamodb create-table \
+  --table-name <tf-state-bucket-name>-terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1
+```
+
+#### 2. GitHub Secrets Setup
+
+Add the following secrets to your GitHub repository (Settings > Secrets and variables > Actions > Secrets):
+
+**AWS Credentials (required):**
+- `AWS_ACCESS_KEY_ID` - Your AWS access key
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+
+**Database & Cache (required):**
+- `PG_DATABASE_URL` - PostgreSQL connection string (e.g., `postgresql://user:pass@host:5432/db`)
+- `REDIS_URL` - Redis connection string (e.g., `redis://user:pass@host:6379`)
+
+**Infrastructure Configuration (optional):**
+- `S3_BUCKET_NAME` - S3 bucket name for data storage (defaults to `fest-vibes-ai-etl-pipeline-data`)
+- `BASE_URL` - Base URL for scraping (defaults to `https://www.wwoz.org`)
+
+**External APIs (optional):**
+- `GOOGLE_MAPS_API_KEY` - Google Maps API key for geocoding
+
+#### 3. GitHub Variables Setup (Optional)
+
+Add the following variables to your GitHub repository (Settings > Secrets and variables > Actions > Variables):
+
+**Terraform Backend Configuration:**
+- `TERRAFORM_BACKEND_BUCKET` - S3 bucket name for Terraform state (defaults to `fest-vibes-ai-et-tf-statel`)
+
+These variables are used to configure the Terraform backend and can be changed without updating the workflow code.
 
 ### GitHub Actions Deployment
 
