@@ -63,7 +63,7 @@ db_configs = {
 }
 
 s3_configs = {
-    "s3_bucket_name": os.getenv("S3_BUCKET_NAME", "ajf-live-re-wire-data"),
+    "s3_bucket_name": os.getenv("S3_BUCKET_NAME", "fest-vibes-ai-etl-pipeline-data"),
     "s3_region": os.getenv("S3_REGION", "us-east-1"),
 }
 
