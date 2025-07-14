@@ -16,3 +16,15 @@ variable "google_maps_api_key" {
   sensitive   = true
   default     = ""
 }
+
+variable "base_url" {
+  description = "Base URL for the website to scrape"
+  type        = string
+  default     = "https://www.wwoz.org"
+}
+
+variable "s3_bucket_name" {
+  description = "S3 bucket name for storing ETL pipeline data"
+  type        = string
+  default     = "fest-vibes-ai-etl-pipeline-data"
+}
