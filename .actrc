@@ -1,0 +1,1 @@
+act --workflows ".github/workflows/main.yml" --job "build-and-push" --platform ubuntu-latest=act-custom
