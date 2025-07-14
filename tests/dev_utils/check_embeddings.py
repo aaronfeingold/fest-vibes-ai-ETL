@@ -2,7 +2,7 @@ import asyncio
 
 from sqlalchemy import text
 
-from ETL.main import DatabaseHandler
+from src.main import DatabaseHandler
 
 
 async def main():

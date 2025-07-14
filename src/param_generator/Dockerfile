@@ -2,17 +2,15 @@ FROM python:3.10-slim as builder
 
 WORKDIR /app
 
-# Install poetry and dependencies
-RUN pip install poetry
-COPY pyproject.toml ./
-# Configure poetry to not use virtualenvs since we're in a container
-RUN poetry config virtualenvs.create false
+# Install pipenv and dependencies
+RUN pip install pipenv
+COPY Pipfile Pipfile.lock ./
 # Install dependencies only (no dev dependencies)
-RUN poetry install --no-dev
+RUN pipenv install --deploy --system
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/extract /app/extract
+COPY src/param_generator /app/param_generator
 
 # Second stage: runtime
 FROM python:3.10-slim
@@ -27,4 +25,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "extract.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "param_generator.app.lambda_handler"]

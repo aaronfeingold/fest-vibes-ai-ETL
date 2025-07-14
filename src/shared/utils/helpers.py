@@ -8,11 +8,11 @@ from datetime import date, datetime
 from typing import Dict, Tuple
 from urllib.parse import ParseResult, urlencode, urljoin, urlparse
 
-from ETL.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
-from ETL.shared.utils.configs import base_configs
-from ETL.shared.utils.errors import ScrapingError
-from ETL.shared.utils.logger import logger
-from ETL.shared.utils.types import ErrorType, ResponseBody, ResponseType
+from src.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from src.shared.utils.configs import base_configs
+from src.shared.utils.errors import ScrapingError
+from src.shared.utils.logger import logger
+from src.shared.utils.types import ErrorType, ResponseBody, ResponseType
 
 
 class EventDTOEncoder(json.JSONEncoder):

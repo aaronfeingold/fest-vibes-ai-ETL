@@ -10,11 +10,11 @@ import asyncio
 import json
 from typing import Any, Dict
 
-from ETL.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
-from ETL.shared.services.s3_service import S3Service
-from ETL.shared.utils.errors import DatabaseError, ErrorType, S3Error
-from ETL.shared.utils.helpers import generate_response
-from ETL.shared.utils.logger import logger
+from src.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from src.shared.services.s3_service import S3Service
+from src.shared.utils.errors import DatabaseError, ErrorType, S3Error
+from src.shared.utils.helpers import generate_response
+from src.shared.utils.logger import logger
 
 from .service import DatabaseService
 

@@ -15,23 +15,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install poetry
-          poetry config virtualenvs.create false
-          poetry install
+          pip install pipenv
+          pipenv install --dev
       - name: Run tests
         run: |
-          pytest -v tests/
+          pipenv run pytest -v tests/
 
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [extractor, loader, cache_manager, date_range_generator]
+        component: [extractor, loader, cache_manager, param_generator]
     steps:
       - uses: actions/checkout@v3
       - name: Configure AWS credentials
@@ -46,7 +45,7 @@ jobs:
       - name: Build and push image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ajf-live-re-wire-${{ matrix.component }}
+          ECR_REPOSITORY: fest-vibes-ai-${{ matrix.component }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Check if repository exists, create if it doesn't
@@ -75,7 +74,7 @@ jobs:
       - name: Terraform Init
         run: |
           cd terraform/environments/prod
-          terraform init -backend-config="bucket=fest-vibes-ai-ETL" -backend-config="key=prod/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="encrypt=true" -backend-config="dynamodb_table=fest-vibes-ai-ETL-terraform-locks"
+          terraform init -backend-config="bucket=fest-vibes-ai-etl" -backend-config="key=prod/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="encrypt=true" -backend-config="dynamodb_table=fest-vibes-ai-etl-terraform-locks"
       - name: Create terraform.tfvars
         run: |
           cd terraform/environments/prod

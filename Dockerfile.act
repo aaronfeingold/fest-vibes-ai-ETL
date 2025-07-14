@@ -1,0 +1,10 @@
+FROM catthehacker/ubuntu:act-latest
+
+# Install AWS CLI and other tools needed for testing
+RUN apt-get update && apt-get install -y \
+    awscli \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep the container running
+CMD ["tail", "-f", "/dev/null"]

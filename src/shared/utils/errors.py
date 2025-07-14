@@ -2,7 +2,7 @@
 Error handling for the application.
 """
 
-from ETL.shared.utils.types import ErrorType
+from src.shared.utils.types import ErrorType
 
 
 class ScrapingError(Exception):
