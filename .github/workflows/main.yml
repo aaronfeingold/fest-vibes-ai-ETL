@@ -80,7 +80,12 @@ jobs:
       - name: Terraform Init
         run: |
           cd terraform/environments/prod
-          terraform init -backend-config="bucket=fest-vibes-ai-etl" -backend-config="key=prod/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="encrypt=true" -backend-config="dynamodb_table=fest-vibes-ai-etl-terraform-locks"
+          terraform init \
+          -backend-config="bucket=${{ secrets.TERRAFORM_BACKEND_BUCKET }}" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=us-east-1" \
+          -backend-config="encrypt=true" \
+          -backend-config="use_lockfile=true"
       - name: Create terraform.tfvars
         run: |
           cd terraform/environments/prod

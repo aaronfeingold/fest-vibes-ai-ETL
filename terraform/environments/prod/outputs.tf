@@ -22,8 +22,3 @@ output "data_bucket_name" {
   description = "Name of the S3 bucket for data storage"
   value       = aws_s3_bucket.data_bucket.id
 }
-
-output "state_bucket_name" {
-  description = "Name of the S3 bucket for Terraform state"
-  value       = aws_s3_bucket.terraform_state.id
-}
