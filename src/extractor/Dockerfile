@@ -1,4 +1,4 @@
-FROM python:3.10-slim as builder
+FROM python:3.11-slim as builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY src/shared /app/shared
 COPY src/extractor /app/extract
 
 # Second stage: runtime
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
