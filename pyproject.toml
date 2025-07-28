@@ -1,3 +1,36 @@
+[project]
+name = "fest-vibes-ai-etl-pipeline"
+version = "0.0.1"
+description = "ETL Pipeline for Festival and Events Data Processing"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4",
+    "pytz",
+    "redis",
+    "psycopg2-binary",
+    "python-dotenv",
+    "aiohttp",
+    "asyncpg",
+    "sqlalchemy[asyncio]",
+    "sentence-transformers",
+    "pgvector",
+    "boto3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+    "pytest-mock",
+    "types-pytz",
+    "bump-my-version",
+]
+
 [tool.black]
 line-length = 88
 target-version = ['py311']
@@ -26,3 +59,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_tests.py"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+
+[tool.bumpversion]
+current_version = "0.0.1"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = "version = \"{current_version}\""
+replace = "version = \"{new_version}\""

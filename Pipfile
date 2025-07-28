@@ -26,6 +26,7 @@ flake8 = "*"
 mypy = "*"
 pytest-mock = "*"
 types-pytz = "*"
+bump-my-version = "*"
 
 [requires]
 python_version = "3.11"

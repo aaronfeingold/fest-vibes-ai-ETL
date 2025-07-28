@@ -28,3 +28,9 @@ variable "s3_bucket_name" {
   type        = string
   default     = "fest-vibes-ai-etl-pipeline-data"
 }
+
+variable "image_version" {
+  description = "Container image tag - can be commit SHA (commit-abc123), version (v1.2.3), or latest"
+  type        = string
+  default     = "latest"
+}

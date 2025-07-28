@@ -6,7 +6,7 @@ resource "aws_lambda_function" "date_range_generator" {
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.date_range_generator.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.date_range_generator.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
@@ -29,7 +29,7 @@ resource "aws_lambda_function" "extractor" {
   description   = "Extracts event data from website"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.extractor.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
@@ -53,7 +53,7 @@ resource "aws_lambda_function" "loader" {
   description   = "Loads data from S3 to database"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.loader.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.loader.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
@@ -77,7 +77,7 @@ resource "aws_lambda_function" "cache_manager" {
   description   = "Updates Redis cache with event data"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.cache_manager.repository_url}:latest"
+  image_uri     = "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
@@ -93,21 +93,4 @@ resource "aws_lambda_function" "cache_manager" {
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
-}
-
-# ECR Repository data sources
-data "aws_ecr_repository" "date_range_generator" {
-  name = "ajf-live-re-wire-date_range_generator"
-}
-
-data "aws_ecr_repository" "extractor" {
-  name = "ajf-live-re-wire-extractor"
-}
-
-data "aws_ecr_repository" "loader" {
-  name = "ajf-live-re-wire-loader"
-}
-
-data "aws_ecr_repository" "cache_manager" {
-  name = "ajf-live-re-wire-cache_manager"
 }
