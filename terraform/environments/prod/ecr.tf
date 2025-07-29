@@ -9,6 +9,16 @@ import {
   id = "fest-vibes-ai-loader"
 }
 
+import {
+  to = aws_ecr_repository.cache_manager
+  id = "fest-vibes-ai-cache-manager"
+}
+
+import {
+  to = aws_ecr_repository.date_range_generator
+  id = "fest-vibes-ai-param-generator"
+}
+
 # ECR repositories for Lambda functions with lifecycle policies
 
 # Date Range Generator ECR Repository

@@ -1,3 +1,9 @@
+# Import existing step function role
+import {
+  to = aws_iam_role.step_function_role
+  id = "fest-vibes-ai-step-function-role"
+}
+
 # Step Function for ETL pipeline orchestration
 resource "aws_sfn_state_machine" "etl_pipeline" {
   name     = "fest-vibes-ai-etl-pipeline"
