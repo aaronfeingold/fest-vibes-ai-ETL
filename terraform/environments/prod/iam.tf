@@ -4,8 +4,18 @@ import {
   id = "fest-vibes-ai-lambda-execution-role"
 }
 
-# Note: The lambda_ecr_access policy will need to be imported manually or deleted/recreated
-# To import manually: terraform import aws_iam_policy.lambda_ecr_access arn:aws:iam::ACCOUNT_ID:policy/fest-vibes-ai-lambda-ecr-access
+import {
+  to = aws_iam_policy.lambda_s3_access
+  id = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/fest-vibes-ai-lambda-s3-access"
+}
+
+import {
+  to = aws_iam_policy.lambda_ecr_access
+  id = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/fest-vibes-ai-lambda-ecr-access"
+}
+
+# Get current AWS account ID for dynamic ARN construction
+data "aws_caller_identity" "current" {}
 
 # IAM role for Lambda execution
 resource "aws_iam_role" "lambda_execution_role" {
