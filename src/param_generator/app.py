@@ -26,7 +26,7 @@ def generate_date_range(days_ahead: int = 30) -> List[str]:
     Returns:
         List of date strings in YYYY-MM-DD format
     """
-    today = datetime.now(base_configs["base_tz"]).date()
+    today = datetime.now(base_configs["timezone"]).date()
     date_range = [
         (today + timedelta(days=i)).strftime("%Y-%m-%d")
         for i in range(days_ahead + 1)  # Include today (i=0) and days_ahead
