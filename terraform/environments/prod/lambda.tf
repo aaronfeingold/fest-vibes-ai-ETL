@@ -1,4 +1,23 @@
 # Lambda functions for the ETL pipeline components
+import {
+  to = aws_lambda_function.param_generator
+  id = "fest-vibes-ai-param_generator"
+}
+
+import {
+  to = aws_lambda_function.extractor
+  id = "fest-vibes-ai-extractor"
+}
+
+import {
+  to = aws_lambda_function.loader
+  id = "fest-vibes-ai-loader"
+}
+
+import {
+  to = aws_lambda_function.cache_manager
+  id = "fest-vibes-ai-cache_manager"
+}
 
 # Date Range Generator Lambda
 resource "aws_lambda_function" "param_generator" {
@@ -9,11 +28,6 @@ resource "aws_lambda_function" "param_generator" {
   image_uri     = "${aws_ecr_repository.param_generator.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
-
-  # Prevent recreation if only image_uri changes
-  lifecycle {
-    ignore_changes = [image_uri]
-  }
 
   environment {
     variables = {
@@ -37,11 +51,6 @@ resource "aws_lambda_function" "extractor" {
   image_uri     = "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
-
-  # Prevent recreation if only image_uri changes
-  lifecycle {
-    ignore_changes = [image_uri]
-  }
 
   environment {
     variables = {
@@ -67,11 +76,6 @@ resource "aws_lambda_function" "loader" {
   timeout       = 300
   memory_size   = 1024
 
-  # Prevent recreation if only image_uri changes
-  lifecycle {
-    ignore_changes = [image_uri]
-  }
-
   environment {
     variables = {
       PG_DATABASE_URL = var.database_url
@@ -95,11 +99,6 @@ resource "aws_lambda_function" "cache_manager" {
   image_uri     = "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
-
-  # Prevent recreation if only image_uri changes
-  lifecycle {
-    ignore_changes = [image_uri]
-  }
 
   environment {
     variables = {
