@@ -15,7 +15,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
     States = {
       "GenerateDateRange" = {
         Type = "Task"
-        Resource = aws_lambda_function.param_generator.invoke_arn
+        Resource = aws_lambda_function.param_generator.arn
         Parameters = {
           days_ahead = 30
         }
@@ -31,7 +31,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
           States = {
             "ExtractorTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.extractor.invoke_arn
+              Resource = aws_lambda_function.extractor.arn
               Parameters = {
                 queryStringParameters = {
                   "date.$" = "$"
@@ -58,7 +58,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
             }
             "LoaderTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.loader.invoke_arn
+              Resource = aws_lambda_function.loader.arn
               Parameters = {
                 s3_key = "$.extractorResult.body.s3_url"
               }
@@ -83,7 +83,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
             }
             "CacheTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.cache_manager.invoke_arn
+              Resource = aws_lambda_function.cache_manager.arn
               Parameters = {
                 date = "$"
               }
