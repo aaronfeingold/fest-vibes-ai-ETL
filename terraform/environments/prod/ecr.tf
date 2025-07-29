@@ -15,14 +15,14 @@ import {
 }
 
 import {
-  to = aws_ecr_repository.date_range_generator
+  to = aws_ecr_repository.param_generator
   id = "fest-vibes-ai-param_generator"
 }
 
 # ECR repositories for Lambda functions with lifecycle policies
 
 # Date Range Generator ECR Repository
-resource "aws_ecr_repository" "date_range_generator" {
+resource "aws_ecr_repository" "param_generator" {
   name                 = "fest-vibes-ai-param_generator"
   image_tag_mutability = "MUTABLE"
 
@@ -37,8 +37,8 @@ resource "aws_ecr_repository" "date_range_generator" {
   }
 }
 
-resource "aws_ecr_lifecycle_policy" "date_range_generator" {
-  repository = aws_ecr_repository.date_range_generator.name
+resource "aws_ecr_lifecycle_policy" "param_generator" {
+  repository = aws_ecr_repository.param_generator.name
 
   policy = jsonencode({
     rules = [

@@ -1,12 +1,12 @@
 # Lambda functions for the ETL pipeline components
 
 # Date Range Generator Lambda
-resource "aws_lambda_function" "date_range_generator" {
+resource "aws_lambda_function" "param_generator" {
   function_name = "fest-vibes-ai-param_generator"
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.date_range_generator.repository_url}:${var.image_version}"
+  image_uri     = "${aws_ecr_repository.param_generator.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
