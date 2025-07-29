@@ -8,11 +8,11 @@ from typing import AsyncGenerator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from src.shared.db.models import Base
-from src.shared.utils.configs import db_configs
-from src.shared.utils.errors import DatabaseError, ErrorType
-from src.shared.utils.helpers import prepare_database_url
-from src.shared.utils.logger import logger
+from shared.db.models import Base
+from shared.utils.configs import db_configs
+from shared.utils.errors import DatabaseError, ErrorType
+from shared.utils.helpers import prepare_database_url
+from shared.utils.logger import logger
 
 
 class Database:

@@ -10,12 +10,12 @@ from urllib.error import HTTPError, URLError
 import aiohttp
 from bs4 import BeautifulSoup, NavigableString, PageElement, Tag
 
-from src.shared.schemas import ArtistData, EventData, EventDTO, VenueData
-from src.shared.utils.configs import base_configs
-from src.shared.utils.errors import ScrapingError
-from src.shared.utils.helpers import generate_url
-from src.shared.utils.logger import logger
-from src.shared.utils.types import ErrorType
+from shared.schemas import ArtistData, EventData, EventDTO, VenueData
+from shared.utils.configs import base_configs
+from shared.utils.errors import ScrapingError
+from shared.utils.helpers import generate_url
+from shared.utils.logger import logger
+from shared.utils.types import ErrorType
 
 
 class ScraperService:

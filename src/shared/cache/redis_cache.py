@@ -8,11 +8,11 @@ from typing import Any, List, Optional, TypeVar
 
 import redis
 
-from src.shared.schemas import EventDTO
-from src.shared.utils.configs import base_configs, redis_config
-from src.shared.utils.errors import ErrorType, RedisError
-from src.shared.utils.helpers import EventDTOEncoder
-from src.shared.utils.logger import logger
+from shared.schemas import EventDTO
+from shared.utils.configs import base_configs, redis_config
+from shared.utils.errors import ErrorType, RedisError
+from shared.utils.helpers import EventDTOEncoder
+from shared.utils.logger import logger
 
 T = TypeVar("T")
 

@@ -7,10 +7,10 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
-from src.shared.utils.configs import base_configs
-from src.shared.utils.errors import DatabaseError, ErrorType, RedisError
-from src.shared.utils.helpers import generate_response
-from src.shared.utils.logger import logger
+from shared.utils.configs import base_configs
+from shared.utils.errors import DatabaseError, ErrorType, RedisError
+from shared.utils.helpers import generate_response
+from shared.utils.logger import logger
 
 from .service import CacheManager
 

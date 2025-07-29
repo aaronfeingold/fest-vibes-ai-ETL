@@ -10,7 +10,7 @@ RUN pipenv install --deploy --system
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/cache_manager /app/load
+COPY src/cache_manager /app/cache_manager
 
 # Second stage: runtime
 FROM python:3.11-slim
@@ -32,4 +32,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "load.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "cache_manager.app.lambda_handler"]

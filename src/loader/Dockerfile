@@ -10,7 +10,7 @@ RUN pipenv install --deploy --system
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/loader /app/transform
+COPY src/loader /app/loader
 
 # Second stage: runtime
 FROM python:3.11-slim
@@ -32,4 +32,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "transform.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "loader.app.lambda_handler"]

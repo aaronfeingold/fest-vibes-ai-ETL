@@ -8,13 +8,13 @@ from typing import Dict, List
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload  # noqa: F401
 
-from src.shared.cache.redis_cache import redis_cache
-from src.shared.db.database import db
-from src.shared.db.models import Artist, Event
-from src.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
-from src.shared.utils.errors import DatabaseError, RedisError
-from src.shared.utils.logger import logger
-from src.shared.utils.types import ErrorType
+from shared.cache.redis_cache import redis_cache
+from shared.db.database import db
+from shared.db.models import Artist, Event
+from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from shared.utils.errors import DatabaseError, RedisError
+from shared.utils.logger import logger
+from shared.utils.types import ErrorType
 
 
 class CacheManager:

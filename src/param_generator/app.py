@@ -10,10 +10,10 @@ import json
 from datetime import datetime, timedelta
 from typing import List
 
-from src.shared.utils.configs import base_configs
-from src.shared.utils.helpers import generate_response
-from src.shared.utils.logger import logger
-from src.shared.utils.types import ErrorType
+from shared.utils.configs import base_configs
+from shared.utils.helpers import generate_response
+from shared.utils.logger import logger
+from shared.utils.types import ErrorType
 
 
 def generate_date_range(days_ahead: int = 30) -> List[str]:
