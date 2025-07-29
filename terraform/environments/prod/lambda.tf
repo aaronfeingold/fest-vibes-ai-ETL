@@ -2,7 +2,7 @@
 
 # Date Range Generator Lambda
 resource "aws_lambda_function" "date_range_generator" {
-  function_name = "fest-vibes-ai-date-range-generator"
+  function_name = "fest-vibes-ai-param-generator"
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
@@ -22,7 +22,7 @@ resource "aws_lambda_function" "date_range_generator" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-date-range-generator"
+    Name        = "fest-vibes-ai-param-generator"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
