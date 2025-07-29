@@ -11,19 +11,19 @@ import {
 
 import {
   to = aws_ecr_repository.cache_manager
-  id = "fest-vibes-ai-cache-manager"
+  id = "fest-vibes-ai-cache_manager"
 }
 
 import {
   to = aws_ecr_repository.date_range_generator
-  id = "fest-vibes-ai-param-generator"
+  id = "fest-vibes-ai-param_generator"
 }
 
 # ECR repositories for Lambda functions with lifecycle policies
 
 # Date Range Generator ECR Repository
 resource "aws_ecr_repository" "date_range_generator" {
-  name                 = "fest-vibes-ai-param-generator"
+  name                 = "fest-vibes-ai-param_generator"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -31,7 +31,7 @@ resource "aws_ecr_repository" "date_range_generator" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-param-generator"
+    Name        = "fest-vibes-ai-param_generator"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
@@ -134,7 +134,7 @@ resource "aws_ecr_lifecycle_policy" "loader" {
 
 # Cache Manager ECR Repository
 resource "aws_ecr_repository" "cache_manager" {
-  name                 = "fest-vibes-ai-cache-manager"
+  name                 = "fest-vibes-ai-cache_manager"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -142,7 +142,7 @@ resource "aws_ecr_repository" "cache_manager" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-cache-manager"
+    Name        = "fest-vibes-ai-cache_manager"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }

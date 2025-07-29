@@ -2,7 +2,7 @@
 
 # Date Range Generator Lambda
 resource "aws_lambda_function" "date_range_generator" {
-  function_name = "fest-vibes-ai-param-generator"
+  function_name = "fest-vibes-ai-param_generator"
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
@@ -22,7 +22,7 @@ resource "aws_lambda_function" "date_range_generator" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-param-generator"
+    Name        = "fest-vibes-ai-param_generator"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
@@ -88,7 +88,7 @@ resource "aws_lambda_function" "loader" {
 
 # Cache Manager Lambda
 resource "aws_lambda_function" "cache_manager" {
-  function_name = "fest-vibes-ai-cache-manager"
+  function_name = "fest-vibes-ai-cache_manager"
   description   = "Updates Redis cache with event data"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
@@ -109,7 +109,7 @@ resource "aws_lambda_function" "cache_manager" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-cache-manager"
+    Name        = "fest-vibes-ai-cache_manager"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }

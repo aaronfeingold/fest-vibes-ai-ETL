@@ -145,11 +145,11 @@ jobs:
           # Update Lambda functions to use commit-tagged images if they exist
           for component in extractor loader cache_manager param_generator; do
             if [ "$component" = "param_generator" ]; then
-              LAMBDA_NAME="fest-vibes-ai-param-generator"
-              ECR_REPO="fest-vibes-ai-param-generator"
+              LAMBDA_NAME="fest-vibes-ai-param_generator"
+              ECR_REPO="fest-vibes-ai-param_generator"
             elif [ "$component" = "cache_manager" ]; then
-                LAMBDA_NAME="fest-vibes-ai-cache-manager"
-                ECR_REPO="fest-vibes-ai-cache-manager"
+                LAMBDA_NAME="fest-vibes-ai-cache_manager"
+                ECR_REPO="fest-vibes-ai-cache_manager"
             else
               LAMBDA_NAME="fest-vibes-ai-$component"
               ECR_REPO="fest-vibes-ai-$component"
