@@ -132,10 +132,10 @@ push_component() {
         local start_time=$(date +%s)
 
         if [[ "$VERBOSE" == "true" ]]; then
-            docker push --progress=plain "$image_name"
+            docker push "$image_name"
         else
             # Always show push progress for better visibility
-            docker push --progress=plain "$image_name" 2>&1 | grep -E "(Pushing|Pushed|Layer already exists|Waiting|Preparing)" | while read -r line; do
+            docker push "$image_name" 2>&1 | grep -E "(Pushing|Pushed|Layer already exists|Waiting|Preparing)" | while read -r line; do
                 echo "  → $line"
             done
         fi

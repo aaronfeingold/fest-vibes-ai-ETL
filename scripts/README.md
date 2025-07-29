@@ -129,3 +129,113 @@ Both scripts support automatic Terraform deployment after successful builds:
 - **Component selection** - Build only specific components using `--components`
 
 Choose the script that best fits your workflow - bash for simplicity or Python for integration with existing utilities.
+
+## Local Docker Testing
+
+To test your Lambda functions locally using Docker images, use these commands:
+
+### Testing Individual Components
+
+**1. Parameter Generator**
+```bash
+# Run with default parameters
+docker run --rm 937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest
+
+# Run with custom parameters
+docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest \
+  python -c "
+import json
+from app import lambda_handler
+result = lambda_handler({'days_ahead': 7}, None)
+print(json.dumps(result, indent=2))
+"
+```
+
+**2. Extractor**
+```bash
+# Test extractor with sample date
+docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-extractor:latest \
+  python -c "
+import json
+from extract.app import lambda_handler
+import asyncio
+event = {'queryStringParameters': {'date': '2025-01-30'}}
+result = asyncio.run(lambda_handler(event, None))
+print(json.dumps(result, indent=2))
+"
+```
+
+**3. Loader**
+```bash
+# Test loader with sample S3 key
+docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-loader:latest \
+  python -c "
+import json
+from transform.app import lambda_handler
+import asyncio
+event = {'s3_key': 'events/2025-01-30.json'}
+result = asyncio.run(lambda_handler(event, None))
+print(json.dumps(result, indent=2))
+"
+```
+
+**4. Cache Manager**
+```bash
+# Test cache manager with sample date
+docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-cache_manager:latest \
+  python -c "
+import json
+from load.app import lambda_handler
+import asyncio
+event = {'date': '2025-01-30'}
+result = asyncio.run(lambda_handler(event, None))
+print(json.dumps(result, indent=2))
+"
+```
+
+### Interactive Testing
+```bash
+# Run container interactively for debugging
+docker run -it --rm 937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest bash
+
+# Inside container, test directly
+cd /app
+python -c "
+import json
+from param_generator.app import lambda_handler
+result = lambda_handler({'days_ahead': 5}, None)
+print(json.dumps(result, indent=2))
+"
+```
+
+### Debugging Tips
+
+1. **Check container contents**:
+   ```bash
+   docker run -it --rm image_name ls -la /app
+   ```
+
+2. **Check Python imports**:
+   ```bash
+   docker run --rm image_name python -c "import sys; print(sys.path)"
+   ```
+
+3. **Verify module structure**:
+   ```bash
+   docker run --rm image_name find /app -name "*.py" | head -20
+   ```
+
+4. **Test imports individually**:
+   ```bash
+   docker run --rm image_name python -c "from shared.utils.logger import logger; print('OK')"
+   ```
+
+### Common Issues
+
+- **ImportError**: Check that import paths match container structure (`shared.utils.*` not `src.shared.utils.*`)
+- **ModuleNotFoundError**: Verify PYTHONPATH includes `/app`
+- **Exit status 1**: Usually import or runtime errors - run interactively to debug
