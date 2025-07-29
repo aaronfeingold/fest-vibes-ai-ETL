@@ -30,7 +30,7 @@ variable "s3_bucket_name" {
 }
 
 variable "image_version" {
-  description = "Container image tag - can be commit SHA (commit-abc123), version (v1.2.3), or latest"
+  description = "Container image tag - should be semantic version like v1.2.3"
   type        = string
   default     = "latest"
 }
