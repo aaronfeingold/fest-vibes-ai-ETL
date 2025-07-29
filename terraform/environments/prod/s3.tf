@@ -1,6 +1,12 @@
+# Import existing S3 bucket
+import {
+  to = aws_s3_bucket.data_bucket
+  id = "fest-vibes-ai-etl-pipeline-data"
+}
+
 # S3 bucket for storing scraped data
 resource "aws_s3_bucket" "data_bucket" {
-  bucket = "fest-vibes-ai-data"
+  bucket = var.s3_bucket_name
 
   tags = {
     Name        = "Fest Vibes AI Data"

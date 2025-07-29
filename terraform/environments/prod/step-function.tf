@@ -1,3 +1,9 @@
+# Import existing step function role
+import {
+  to = aws_iam_role.step_function_role
+  id = "fest-vibes-ai-step-function-role"
+}
+
 # Step Function for ETL pipeline orchestration
 resource "aws_sfn_state_machine" "etl_pipeline" {
   name     = "fest-vibes-ai-etl-pipeline"
@@ -9,7 +15,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
     States = {
       "GenerateDateRange" = {
         Type = "Task"
-        Resource = aws_lambda_function.date_range_generator.invoke_arn
+        Resource = aws_lambda_function.param_generator.invoke_arn
         Parameters = {
           days_ahead = 30
         }
@@ -21,7 +27,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         ItemsPath = "$.dateRange.dates"
         MaxConcurrency = 5
         Iterator = {
-          StartAt = "ScraperTask"
+          StartAt = "ExtractorTask"
           States = {
             "ExtractorTask" = {
               Type = "Task"
@@ -155,7 +161,7 @@ resource "aws_iam_policy" "step_function_lambda" {
           "lambda:InvokeFunction"
         ]
         Resource = [
-          aws_lambda_function.date_range_generator.arn,
+          aws_lambda_function.param_generator.arn,
           aws_lambda_function.extractor.arn,
           aws_lambda_function.loader.arn,
           aws_lambda_function.cache_manager.arn

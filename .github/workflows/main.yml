@@ -2,20 +2,26 @@ name: Build and Deploy ETL Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PG_DATABASE_URL: ${{ secrets.PG_DATABASE_URL }}
+      BASE_URL: ${{ secrets.BASE_URL }}
+      S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -33,6 +39,14 @@ jobs:
         component: [extractor, loader, cache_manager, param_generator]
     steps:
       - uses: actions/checkout@v3
+      - name: Get version from pyproject.toml
+        id: version
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomli-w
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -42,21 +56,22 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-      - name: Build and push image
+      - name: Build and push image with commit SHA
+        id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: fest-vibes-ai-${{ matrix.component }}
-          IMAGE_TAG: ${{ github.sha }}
+          COMMIT_TAG: commit-${{ github.sha }}
+          BUILD_TAG: build-${{ github.run_number }}
         run: |
-          # Check if repository exists, create if it doesn't
-          aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
-          # Build and tag the image
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f src/${{ matrix.component }}/Dockerfile .
-          # Push the image
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          # Save the image URI
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          # Build and tag the image with commit SHA and build number
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:$BUILD_TAG -f src/${{ matrix.component }}/Dockerfile .
+          # Push commit SHA and build tags (immutable build artifacts)
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$BUILD_TAG
+          # Save the commit-tagged image URI for deployment
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_TAG" >> $GITHUB_OUTPUT
+          echo "commit_tag=$COMMIT_TAG" >> $GITHUB_OUTPUT
 
   deploy:
     needs: build-and-push
@@ -74,16 +89,158 @@ jobs:
       - name: Terraform Init
         run: |
           cd terraform/environments/prod
-          terraform init -backend-config="bucket=fest-vibes-ai-etl" -backend-config="key=prod/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="encrypt=true" -backend-config="dynamodb_table=fest-vibes-ai-etl-terraform-locks"
+          terraform init \
+          -backend-config="bucket=${{ secrets.TERRAFORM_BACKEND_BUCKET }}" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=us-east-1" \
+          -backend-config="encrypt=true" \
+          -backend-config="use_lockfile=true"
+      - name: Get deployment version and commit info
+        id: deploy_version
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomli-w
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "Deployment version: $VERSION, Commit: ${{ github.sha }}"
       - name: Create terraform.tfvars
         run: |
           cd terraform/environments/prod
+          # Get AWS account ID and construct ECR registry URL
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com"
+          COMMIT_TAG="commit-${{ github.sha }}"
+
+          # Check if at least one component image exists with the commit tag
+          if aws ecr describe-images --repository-name fest-vibes-ai-extractor --image-ids imageTag=$COMMIT_TAG >/dev/null 2>&1; then
+            IMAGE_VERSION=$COMMIT_TAG
+            echo "Using commit tag: $IMAGE_VERSION"
+          else
+            IMAGE_VERSION="latest"
+            echo "Commit tag not found, using latest tag"
+          fi
+
           cat > terraform.tfvars << EOF
-          database_url = "${{ secrets.DATABASE_URL }}"
+          database_url = "${{ secrets.PG_DATABASE_URL }}"
           redis_url = "${{ secrets.REDIS_URL }}"
           google_maps_api_key = "${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          base_url = "${{ secrets.BASE_URL }}"
+          s3_bucket_name = "${{ secrets.S3_BUCKET_NAME }}"
+          image_version = "$IMAGE_VERSION"
           EOF
       - name: Terraform Apply
         run: |
           cd terraform/environments/prod
           terraform apply -auto-approve
+      - name: Update Lambda Functions with Commit Images
+        if: success()
+        run: |
+          cd terraform/environments/prod
+          # Get AWS account ID and construct ECR registry URL
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com"
+          COMMIT_TAG="commit-${{ github.sha }}"
+
+          # Update Lambda functions to use commit-tagged images if they exist
+          for component in extractor loader cache_manager param_generator; do
+            if [ "$component" = "param_generator" ]; then
+              LAMBDA_NAME="fest-vibes-ai-param_generator"
+              ECR_REPO="fest-vibes-ai-param_generator"
+            elif [ "$component" = "cache_manager" ]; then
+                LAMBDA_NAME="fest-vibes-ai-cache_manager"
+                ECR_REPO="fest-vibes-ai-cache_manager"
+            else
+              LAMBDA_NAME="fest-vibes-ai-$component"
+              ECR_REPO="fest-vibes-ai-$component"
+            fi
+
+            # Check if commit-tagged image exists
+            if aws ecr describe-images --repository-name $ECR_REPO --image-ids imageTag=$COMMIT_TAG >/dev/null 2>&1; then
+              IMAGE_URI="$ECR_REGISTRY/$ECR_REPO:$COMMIT_TAG"
+              echo "Updating $LAMBDA_NAME to use $IMAGE_URI"
+              aws lambda update-function-code --function-name $LAMBDA_NAME --image-uri $IMAGE_URI
+            else
+              echo "Commit-tagged image not found for $ECR_REPO, skipping update"
+            fi
+          done
+
+  version-and-tag:
+    needs: [build-and-push, deploy]
+    runs-on: ubuntu-latest
+    if: success() && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv bump-my-version
+          pipenv install --dev
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+      - name: Bump version and create tags
+        id: bump-version
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Bump patch version
+          bump-my-version patch
+
+          # Get new version
+          NEW_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "New version: $NEW_VERSION"
+
+          # Create Git tag
+          git add pyproject.toml
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git tag "v$NEW_VERSION"
+
+          # Push changes and tags
+          git push origin main
+          git push origin "v$NEW_VERSION"
+
+          # Set output for ECR re-tagging
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+      - name: Configure AWS credentials for re-tagging
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Login to Amazon ECR for re-tagging
+        id: login-ecr-retag
+        uses: aws-actions/amazon-ecr-login@v1
+      - name: Re-tag ECR images with version
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr-retag.outputs.registry }}
+          COMMIT_SHA: ${{ github.sha }}
+          NEW_VERSION: ${{ steps.bump-version.outputs.new_version }}
+        run: |
+          # Re-tag all component images with version and latest
+          for component in extractor loader cache_manager param_generator; do
+            ECR_REPOSITORY="fest-vibes-ai-$component"
+
+            # Pull the commit-tagged image
+            docker pull $ECR_REGISTRY/$ECR_REPOSITORY:commit-$COMMIT_SHA
+
+            # Tag with version and latest
+            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:commit-$COMMIT_SHA $ECR_REGISTRY/$ECR_REPOSITORY:v$NEW_VERSION
+            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:commit-$COMMIT_SHA $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+            # Push version and latest tags
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:v$NEW_VERSION
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+            echo "Re-tagged $ECR_REPOSITORY with v$NEW_VERSION and latest"
+          done

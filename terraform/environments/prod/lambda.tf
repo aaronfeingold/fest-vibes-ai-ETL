@@ -1,23 +1,42 @@
 # Lambda functions for the ETL pipeline components
+import {
+  to = aws_lambda_function.param_generator
+  id = "fest-vibes-ai-param_generator"
+}
+
+import {
+  to = aws_lambda_function.extractor
+  id = "fest-vibes-ai-extractor"
+}
+
+import {
+  to = aws_lambda_function.loader
+  id = "fest-vibes-ai-loader"
+}
+
+import {
+  to = aws_lambda_function.cache_manager
+  id = "fest-vibes-ai-cache_manager"
+}
 
 # Date Range Generator Lambda
-resource "aws_lambda_function" "date_range_generator" {
-  function_name = "fest-vibes-ai-date-range-generator"
+resource "aws_lambda_function" "param_generator" {
+  function_name = "fest-vibes-ai-param_generator"
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.date_range_generator.repository_uri}:latest"
+  image_uri     = "${aws_ecr_repository.param_generator.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
   environment {
     variables = {
-      BASE_URL = "https://www.wwoz.org"
+      BASE_URL = var.base_url
     }
   }
 
   tags = {
-    Name        = "fest-vibes-ai-date-range-generator"
+    Name        = "fest-vibes-ai-param_generator"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
@@ -29,13 +48,13 @@ resource "aws_lambda_function" "extractor" {
   description   = "Extracts event data from website"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.extractor.repository_uri}:latest"
+  image_uri     = "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
   environment {
     variables = {
-      BASE_URL = "https://www.wwoz.org"
+      BASE_URL = var.base_url
       S3_BUCKET_NAME = aws_s3_bucket.data_bucket.id
     }
   }
@@ -53,7 +72,7 @@ resource "aws_lambda_function" "loader" {
   description   = "Loads data from S3 to database"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.loader.repository_uri}:latest"
+  image_uri     = "${aws_ecr_repository.loader.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
@@ -73,11 +92,11 @@ resource "aws_lambda_function" "loader" {
 
 # Cache Manager Lambda
 resource "aws_lambda_function" "cache_manager" {
-  function_name = "fest-vibes-ai-cache-manager"
+  function_name = "fest-vibes-ai-cache_manager"
   description   = "Updates Redis cache with event data"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${data.aws_ecr_repository.cache_manager.repository_uri}:latest"
+  image_uri     = "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
@@ -89,25 +108,8 @@ resource "aws_lambda_function" "cache_manager" {
   }
 
   tags = {
-    Name        = "fest-vibes-ai-cache-manager"
+    Name        = "fest-vibes-ai-cache_manager"
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
-}
-
-# ECR Repository data sources
-data "aws_ecr_repository" "date_range_generator" {
-  name = "ajf-live-re-wire-date_range_generator"
-}
-
-data "aws_ecr_repository" "extractor" {
-  name = "ajf-live-re-wire-extractor"
-}
-
-data "aws_ecr_repository" "loader" {
-  name = "ajf-live-re-wire-loader"
-}
-
-data "aws_ecr_repository" "cache_manager" {
-  name = "ajf-live-re-wire-cache_manager"
 }
