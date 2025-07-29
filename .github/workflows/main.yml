@@ -107,18 +107,57 @@ jobs:
       - name: Create terraform.tfvars
         run: |
           cd terraform/environments/prod
+          # Check if commit-tagged images exist, fallback to latest
+          ECR_REGISTRY=$(aws ecr get-login-server)
+          COMMIT_TAG="commit-${{ github.sha }}"
+
+          # Check if at least one component image exists with the commit tag
+          if aws ecr describe-images --repository-name fest-vibes-ai-extractor --image-ids imageTag=$COMMIT_TAG >/dev/null 2>&1; then
+            IMAGE_VERSION=$COMMIT_TAG
+            echo "Using commit tag: $IMAGE_VERSION"
+          else
+            IMAGE_VERSION="latest"
+            echo "Commit tag not found, using latest"
+          fi
+
           cat > terraform.tfvars << EOF
           database_url = "${{ secrets.PG_DATABASE_URL }}"
           redis_url = "${{ secrets.REDIS_URL }}"
           google_maps_api_key = "${{ secrets.GOOGLE_MAPS_API_KEY }}"
           base_url = "${{ secrets.BASE_URL }}"
           s3_bucket_name = "${{ secrets.S3_BUCKET_NAME }}"
-          image_version = "commit-${{ github.sha }}"
+          image_version = "$IMAGE_VERSION"
           EOF
       - name: Terraform Apply
         run: |
           cd terraform/environments/prod
           terraform apply -auto-approve
+      - name: Update Lambda Functions with Commit Images
+        if: success()
+        run: |
+          cd terraform/environments/prod
+          ECR_REGISTRY=$(aws ecr get-login-server)
+          COMMIT_TAG="commit-${{ github.sha }}"
+
+          # Update Lambda functions to use commit-tagged images if they exist
+          for component in extractor loader cache_manager param_generator; do
+            if [ "$component" = "param_generator" ]; then
+              LAMBDA_NAME="fest-vibes-ai-date-range-generator"
+              ECR_REPO="fest-vibes-ai-param-generator"
+            else
+              LAMBDA_NAME="fest-vibes-ai-$component"
+              ECR_REPO="fest-vibes-ai-$component"
+            fi
+
+            # Check if commit-tagged image exists
+            if aws ecr describe-images --repository-name $ECR_REPO --image-ids imageTag=$COMMIT_TAG >/dev/null 2>&1; then
+              IMAGE_URI="$ECR_REGISTRY/$ECR_REPO:$COMMIT_TAG"
+              echo "Updating $LAMBDA_NAME to use $IMAGE_URI"
+              aws lambda update-function-code --function-name $LAMBDA_NAME --image-uri $IMAGE_URI
+            else
+              echo "Commit-tagged image not found for $ECR_REPO, skipping update"
+            fi
+          done
 
   version-and-tag:
     needs: [build-and-push, deploy]

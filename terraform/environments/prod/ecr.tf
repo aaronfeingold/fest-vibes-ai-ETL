@@ -1,3 +1,14 @@
+# Import existing ECR repositories
+import {
+  to = aws_ecr_repository.extractor
+  id = "fest-vibes-ai-extractor"
+}
+
+import {
+  to = aws_ecr_repository.loader
+  id = "fest-vibes-ai-loader"
+}
+
 # ECR repositories for Lambda functions with lifecycle policies
 
 # Date Range Generator ECR Repository

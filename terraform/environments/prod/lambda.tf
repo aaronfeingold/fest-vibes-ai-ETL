@@ -10,6 +10,11 @@ resource "aws_lambda_function" "date_range_generator" {
   timeout       = 300
   memory_size   = 512
 
+  # Prevent recreation if only image_uri changes
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
+
   environment {
     variables = {
       BASE_URL = var.base_url
@@ -32,6 +37,11 @@ resource "aws_lambda_function" "extractor" {
   image_uri     = "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
+
+  # Prevent recreation if only image_uri changes
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
 
   environment {
     variables = {
@@ -57,6 +67,11 @@ resource "aws_lambda_function" "loader" {
   timeout       = 300
   memory_size   = 1024
 
+  # Prevent recreation if only image_uri changes
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
+
   environment {
     variables = {
       PG_DATABASE_URL = var.database_url
@@ -80,6 +95,11 @@ resource "aws_lambda_function" "cache_manager" {
   image_uri     = "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
+
+  # Prevent recreation if only image_uri changes
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
 
   environment {
     variables = {
