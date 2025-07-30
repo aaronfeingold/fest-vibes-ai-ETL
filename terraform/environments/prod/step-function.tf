@@ -11,20 +11,36 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
 
   definition = jsonencode({
     Comment = "ETL Pipeline for Fest Vibes AI"
-    StartAt = "GenerateDateRange"
+    StartAt = "GenerateParams"
     States = {
-      "GenerateDateRange" = {
+      "GenerateParams" = {
         Type = "Task"
         Resource = aws_lambda_function.param_generator.arn
         Parameters = {
           days_ahead = 30
         }
         ResultPath = "$.dateRange"
-        Next = "ProcessDateRange"
+        Next = "CheckParamGeneratorStatus"
       }
-      "ProcessDateRange" = {
+      "CheckParamGeneratorStatus" = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable = "$.dateRange.statusCode"
+            NumericEquals = 200
+            Next = "ProcessDateRangeParam"
+          }
+        ]
+        Default = "ParamGeneratorFailed"
+      }
+      "ParamGeneratorFailed" = {
+        Type = "Fail"
+        Error = "ParamGeneratorTaskFailed"
+        Cause = "Parameter generator task returned non-200 status code"
+      }
+      "ProcessDateRangeParam" = {
         Type = "Map"
-        ItemsPath = "$.dateRange.dates"
+        ItemsPath = "$.dateRange.body.dates"
         MaxConcurrency = 5
         Iterator = {
           StartAt = "ExtractorTask"

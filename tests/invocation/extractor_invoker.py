@@ -9,8 +9,8 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from shared.utils.logger import logger
 from src.extractor.app import app
+from src.shared.utils.logger import logger
 
 # Load environment variables
 load_dotenv()

@@ -70,12 +70,17 @@ def lambda_handler(event, context):
 
         date_range = generate_date_range(days_ahead)
 
-        return {
-            "dates": date_range,
-            "start_date": date_range[0],
-            "end_date": date_range[-1],
-            "count": len(date_range),
-        }
+        return generate_response(
+            200,
+            {
+                "status": "success",
+                "dates": date_range,
+                "start_date": date_range[0],
+                "end_date": date_range[-1],
+                "count": len(date_range),
+                **aws_info,
+            },
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
