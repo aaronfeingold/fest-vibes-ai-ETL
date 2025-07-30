@@ -142,7 +142,7 @@ if __name__ == "__main__":
     mock_context = None
 
     # Run the cache manager
-    result = asyncio.run(lambda_handler(mock_event, mock_context))
+    result = asyncio.run(app(mock_event, mock_context))
 
     # Print the result
     print(json.dumps(result, indent=2))
