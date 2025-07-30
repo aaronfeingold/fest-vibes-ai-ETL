@@ -25,7 +25,12 @@ def bump_patch_version():
         with open("pyproject.toml", "r") as f:
             content = f.read()
 
-        content = re.sub(r"version = \"[^\"]+\"", f'version = "{new_version}"', content)
+        content = re.sub(
+            r'^version = "[^"]+"',
+            f'version = "{new_version}"',
+            content,
+            flags=re.MULTILINE,
+        )
 
         with open("pyproject.toml", "w") as f:
             f.write(content)
