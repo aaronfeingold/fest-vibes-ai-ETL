@@ -4,6 +4,12 @@ import {
   id = "fest-vibes-ai-step-function-role"
 }
 
+# Import existing step function state machine
+import {
+  to = aws_sfn_state_machine.etl_pipeline
+  id = "fest-vibes-ai-etl-pipeline"
+}
+
 # Step Function for ETL pipeline orchestration
 resource "aws_sfn_state_machine" "etl_pipeline" {
   name     = "fest-vibes-ai-etl-pipeline"
@@ -137,6 +143,12 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
+}
+
+# Import existing IAM policy
+import {
+  to = aws_iam_policy.step_function_lambda
+  id = "arn:aws:iam::937355130135:policy/fest-vibes-ai-step-function-lambda"
 }
 
 # IAM role for Step Function
