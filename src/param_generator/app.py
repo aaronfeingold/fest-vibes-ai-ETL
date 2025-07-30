@@ -10,10 +10,10 @@ import json
 from datetime import datetime, timedelta
 from typing import List
 
-from src.shared.utils.configs import base_configs
-from src.shared.utils.helpers import generate_response
-from src.shared.utils.logger import logger
-from src.shared.utils.types import ErrorType
+from shared.utils.configs import base_configs
+from shared.utils.helpers import generate_response
+from shared.utils.logger import logger
+from shared.utils.types import ErrorType
 
 
 def generate_date_range(days_ahead: int = 30) -> List[str]:
@@ -26,7 +26,7 @@ def generate_date_range(days_ahead: int = 30) -> List[str]:
     Returns:
         List of date strings in YYYY-MM-DD format
     """
-    today = datetime.now(base_configs["base_tz"]).date()
+    today = datetime.now(base_configs["timezone"]).date()
     date_range = [
         (today + timedelta(days=i)).strftime("%Y-%m-%d")
         for i in range(days_ahead + 1)  # Include today (i=0) and days_ahead
@@ -70,12 +70,17 @@ def lambda_handler(event, context):
 
         date_range = generate_date_range(days_ahead)
 
-        return {
-            "dates": date_range,
-            "start_date": date_range[0],
-            "end_date": date_range[-1],
-            "count": len(date_range),
-        }
+        return generate_response(
+            200,
+            {
+                "status": "success",
+                "dates": date_range,
+                "start_date": date_range[0],
+                "end_date": date_range[-1],
+                "count": len(date_range),
+                **aws_info,
+            },
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")

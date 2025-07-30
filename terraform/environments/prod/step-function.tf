@@ -4,6 +4,12 @@ import {
   id = "fest-vibes-ai-step-function-role"
 }
 
+# Import existing step function state machine
+import {
+  to = aws_sfn_state_machine.etl_pipeline
+  id = "arn:aws:states:us-east-1:937355130135:stateMachine:fest-vibes-ai-etl-pipeline"
+}
+
 # Step Function for ETL pipeline orchestration
 resource "aws_sfn_state_machine" "etl_pipeline" {
   name     = "fest-vibes-ai-etl-pipeline"
@@ -11,27 +17,43 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
 
   definition = jsonencode({
     Comment = "ETL Pipeline for Fest Vibes AI"
-    StartAt = "GenerateDateRange"
+    StartAt = "GenerateParams"
     States = {
-      "GenerateDateRange" = {
+      "GenerateParams" = {
         Type = "Task"
-        Resource = aws_lambda_function.param_generator.invoke_arn
+        Resource = aws_lambda_function.param_generator.arn
         Parameters = {
           days_ahead = 30
         }
         ResultPath = "$.dateRange"
-        Next = "ProcessDateRange"
+        Next = "CheckParamGeneratorStatus"
       }
-      "ProcessDateRange" = {
+      "CheckParamGeneratorStatus" = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable = "$.dateRange.statusCode"
+            NumericEquals = 200
+            Next = "ProcessDateRangeParam"
+          }
+        ]
+        Default = "ParamGeneratorFailed"
+      }
+      "ParamGeneratorFailed" = {
+        Type = "Fail"
+        Error = "ParamGeneratorTaskFailed"
+        Cause = "Parameter generator task returned non-200 status code"
+      }
+      "ProcessDateRangeParam" = {
         Type = "Map"
-        ItemsPath = "$.dateRange.dates"
+        ItemsPath = "$.dateRange.body.dates"
         MaxConcurrency = 5
         Iterator = {
           StartAt = "ExtractorTask"
           States = {
             "ExtractorTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.extractor.invoke_arn
+              Resource = aws_lambda_function.extractor.arn
               Parameters = {
                 queryStringParameters = {
                   "date.$" = "$"
@@ -58,7 +80,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
             }
             "LoaderTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.loader.invoke_arn
+              Resource = aws_lambda_function.loader.arn
               Parameters = {
                 s3_key = "$.extractorResult.body.s3_url"
               }
@@ -83,7 +105,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
             }
             "CacheTask" = {
               Type = "Task"
-              Resource = aws_lambda_function.cache_manager.invoke_arn
+              Resource = aws_lambda_function.cache_manager.arn
               Parameters = {
                 date = "$"
               }
@@ -121,6 +143,12 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
+}
+
+# Import existing IAM policy
+import {
+  to = aws_iam_policy.step_function_lambda
+  id = "arn:aws:iam::937355130135:policy/fest-vibes-ai-step-function-lambda"
 }
 
 # IAM role for Step Function

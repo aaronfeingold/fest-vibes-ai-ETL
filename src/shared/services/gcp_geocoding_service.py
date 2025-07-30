@@ -7,8 +7,8 @@ from typing import Dict
 
 import aiohttp
 
-from src.shared.utils.configs import base_configs
-from src.shared.utils.logger import logger
+from shared.utils.configs import base_configs
+from shared.utils.logger import logger
 
 
 class GeocodingService:

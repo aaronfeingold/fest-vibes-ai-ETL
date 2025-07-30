@@ -2,7 +2,7 @@
 Error handling for the application.
 """
 
-from src.shared.utils.types import ErrorType
+from shared.utils.types import ErrorType
 
 
 class ScrapingError(Exception):

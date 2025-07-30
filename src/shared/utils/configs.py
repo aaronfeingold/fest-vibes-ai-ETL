@@ -40,7 +40,7 @@ base_configs: BaseConfig = {
         "longitude": -90.0715,
     },
     "date_format": "%Y-%m-%d",
-    "base_url": os.environ.get("BASE_URL", "https://www.wwoz.org"),
+    "base_url": os.getenv("BASE_URL", "https://www.wwoz.org"),
     "default_endpoint": "/calendar/livewire-music",
     "default_headers": {
         "User-Agent": os.getenv(

@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from src.shared.schemas.dto import EventDTO
-from src.shared.utils.configs import s3_configs
-from src.shared.utils.errors import ErrorType, S3Error
-from src.shared.utils.helpers import EventDTOEncoder
-from src.shared.utils.logger import logger
+from shared.schemas.dto import EventDTO
+from shared.utils.configs import s3_configs
+from shared.utils.errors import ErrorType, S3Error
+from shared.utils.helpers import EventDTOEncoder
+from shared.utils.logger import logger
 
 
 class S3Service:

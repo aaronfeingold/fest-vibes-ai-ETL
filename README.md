@@ -302,6 +302,34 @@ Add the following variables to your GitHub repository (Settings > Secrets and va
 
 These variables are used to configure the Terraform backend and can be changed without updating the workflow code.
 
+### Manual Terraform Deployment
+
+If you need to deploy manually or debug Terraform issues, you can run Terraform directly:
+
+```bash
+# Navigate to the production environment
+cd terraform/environments/prod
+
+# Make sure you have your tfvars file
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your actual values
+
+# Initialize Terraform with backend configuration
+terraform init \
+  -backend-config="bucket=YOUR_TERRAFORM_BACKEND_BUCKET" \
+  -backend-config="key=prod/terraform.tfstate" \
+  -backend-config="region=us-east-1" \
+  -backend-config="encrypt=true"
+
+# Review the planned changes
+terraform plan   # You'll see lots of "will be imported" messages
+
+# Apply the changes
+terraform apply  # This imports everything into your state bucket
+```
+
+**Note:** Replace `YOUR_TERRAFORM_BACKEND_BUCKET` with your actual Terraform state bucket name.
+
 ### GitHub Actions Deployment
 
 The GitHub Actions workflow automates the complete deployment process:
@@ -394,10 +422,10 @@ The Step Function orchestrates the complete ETL pipeline:
   - `fest-vibes-ai-data` - Raw scraped data storage
 
 - **Lambda Functions**:
-  - `fest-vibes-ai-date-range-generator`
+  - `fest-vibes-ai-param_generator`
   - `fest-vibes-ai-extractor`
   - `fest-vibes-ai-loader`
-  - `fest-vibes-ai-cache-manager`
+  - `fest-vibes-ai-cache_manager`
 
 - **Step Function**: `fest-vibes-ai-etl-pipeline` - Orchestrates the entire workflow
 

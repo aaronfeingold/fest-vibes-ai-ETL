@@ -10,11 +10,11 @@ import asyncio
 import json
 from typing import Any, Dict
 
-from src.shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
-from src.shared.services.s3_service import S3Service
-from src.shared.utils.errors import DatabaseError, ErrorType, S3Error
-from src.shared.utils.helpers import generate_response
-from src.shared.utils.logger import logger
+from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
+from shared.services.s3_service import S3Service
+from shared.utils.errors import DatabaseError, ErrorType, S3Error
+from shared.utils.helpers import generate_response
+from shared.utils.logger import logger
 
 from .service import DatabaseService
 
@@ -158,7 +158,13 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     """Run the loader as a script for testing."""
-    mock_event = {"s3_key": "raw_events/2025/04/14/event_data_20250414_120000.json"}
+    import os
+
+    s3_key = os.getenv(
+        "TEST_S3_KEY", "raw_events/2025/04/14/event_data_20250414_120000.json"
+    )
+
+    mock_event = {"s3_key": s3_key}
     mock_context = None
 
     # Run the loader

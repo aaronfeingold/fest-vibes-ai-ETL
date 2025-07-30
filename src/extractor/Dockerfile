@@ -10,7 +10,7 @@ RUN pipenv install --deploy --system
 
 # Copy shared library and application code
 COPY src/shared /app/shared
-COPY src/extractor /app/extract
+COPY src/extractor /app/extractor
 
 # Second stage: runtime
 FROM python:3.11-slim
@@ -25,4 +25,4 @@ COPY --from=builder /app /app
 ENV PYTHONPATH=/app
 
 # Set Lambda handler
-CMD ["python", "-m", "awslambdaric", "extract.app.lambda_handler"]
+CMD ["python", "-m", "awslambdaric", "extractor.app.lambda_handler"]
