@@ -7,7 +7,7 @@ import {
 # Import existing step function state machine
 import {
   to = aws_sfn_state_machine.etl_pipeline
-  id = "fest-vibes-ai-etl-pipeline"
+  id = "arn:aws:states:us-east-1:937355130135:stateMachine:fest-vibes-ai-etl-pipeline"
 }
 
 # Step Function for ETL pipeline orchestration
