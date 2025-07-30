@@ -15,6 +15,7 @@ sqlalchemy = {extras = ["asyncio"] }
 sentence-transformers = "*"
 pgvector = "*"
 boto3 = "*"
+awslambdaric = "*"
 
 [dev-packages]
 pytest = "*"
