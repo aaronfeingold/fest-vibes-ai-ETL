@@ -35,6 +35,30 @@ variable "image_version" {
   default     = "latest"
 }
 
+variable "param_generator_image_digest" {
+  description = "SHA256 digest of param_generator container image"
+  type        = string
+  default     = ""
+}
+
+variable "extractor_image_digest" {
+  description = "SHA256 digest of extractor container image"
+  type        = string
+  default     = ""
+}
+
+variable "loader_image_digest" {
+  description = "SHA256 digest of loader container image"
+  type        = string
+  default     = ""
+}
+
+variable "cache_manager_image_digest" {
+  description = "SHA256 digest of cache_manager container image"
+  type        = string
+  default     = ""
+}
+
 variable "user_agent" {
   description = "User agent string for web scraping requests"
   type        = string
