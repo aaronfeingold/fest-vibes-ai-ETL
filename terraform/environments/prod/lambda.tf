@@ -25,7 +25,7 @@ resource "aws_lambda_function" "param_generator" {
   description   = "Generates date ranges for ETL pipeline"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.param_generator.repository_url}:${var.image_version}"
+  image_uri     = var.param_generator_image_digest != "" ? "${aws_ecr_repository.param_generator.repository_url}@${var.param_generator_image_digest}" : "${aws_ecr_repository.param_generator.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
@@ -48,7 +48,7 @@ resource "aws_lambda_function" "extractor" {
   description   = "Extracts event data from website"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
+  image_uri     = var.extractor_image_digest != "" ? "${aws_ecr_repository.extractor.repository_url}@${var.extractor_image_digest}" : "${aws_ecr_repository.extractor.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
@@ -75,7 +75,7 @@ resource "aws_lambda_function" "loader" {
   description   = "Loads data from S3 to database"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.loader.repository_url}:${var.image_version}"
+  image_uri     = var.loader_image_digest != "" ? "${aws_ecr_repository.loader.repository_url}@${var.loader_image_digest}" : "${aws_ecr_repository.loader.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 1024
 
@@ -104,7 +104,7 @@ resource "aws_lambda_function" "cache_manager" {
   description   = "Updates Redis cache with event data"
   role          = aws_iam_role.lambda_execution_role.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
+  image_uri     = var.cache_manager_image_digest != "" ? "${aws_ecr_repository.cache_manager.repository_url}@${var.cache_manager_image_digest}" : "${aws_ecr_repository.cache_manager.repository_url}:${var.image_version}"
   timeout       = 300
   memory_size   = 512
 
