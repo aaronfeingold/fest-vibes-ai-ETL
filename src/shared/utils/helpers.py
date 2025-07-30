@@ -11,7 +11,6 @@ from urllib.parse import ParseResult, urlencode, urljoin, urlparse
 from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
 from shared.utils.configs import base_configs
 from shared.utils.errors import ScrapingError
-from shared.utils.logger import logger
 from shared.utils.types import ErrorType, ResponseBody, ResponseType
 
 
@@ -76,7 +75,6 @@ def generate_url(
         # Then add query parameters if they exist
         if params:
             url = f"{url}?{urlencode(params)}"
-        logger.info(f"Generated URL: {url}")
         return url
     except (TypeError, Exception) as e:
         raise ScrapingError(
