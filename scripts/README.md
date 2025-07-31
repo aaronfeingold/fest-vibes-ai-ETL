@@ -195,11 +195,11 @@ print(json.dumps(result, indent=2))
 "
 
 # Using manual environment variables
-docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-extractor:latest \
+docker run --rm --env-file test.env \
+  extractor-test \
   python -c "
 import json
-from extract.app import lambda_handler
+from extractor.app import lambda_handler
 import asyncio
 event = {'queryStringParameters': {'date': '2025-01-30'}}
 result = asyncio.run(lambda_handler(event, None))
