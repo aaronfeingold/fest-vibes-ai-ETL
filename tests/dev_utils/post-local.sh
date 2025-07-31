@@ -15,5 +15,4 @@ curl -s -X POST http://localhost:8080/2015-03-31/functions/function/invocations 
   -d '{
     "httpMethod": "POST",
     "queryStringParameters": { "date": "'"$DATE"'" },
-    "devEnv": false
   }' | jq .
