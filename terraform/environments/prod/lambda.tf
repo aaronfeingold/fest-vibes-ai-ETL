@@ -32,6 +32,20 @@ resource "aws_lambda_function" "param_generator" {
   environment {
     variables = {
       BASE_URL = var.base_url
+      PG_DATABASE_URL = var.database_url
+      REDIS_URL = var.redis_url
+      S3_BUCKET_NAME = aws_s3_bucket.data_bucket.id
+      S3_REGION = var.s3_region
+      USER_AGENT = var.user_agent
+      GOOGLE_MAPS_API_KEY = var.google_maps_api_key
+      DB_ECHO = var.db_echo
+      DB_POOL_SIZE = var.db_pool_size
+      DB_MAX_OVERFLOW = var.db_max_overflow
+      DB_POOL_TIMEOUT = var.db_pool_timeout
+      REDIS_SOCKET_TIMEOUT = var.redis_socket_timeout
+      REDIS_SOCKET_CONNECT_TIMEOUT = var.redis_socket_connect_timeout
+      REDIS_RETRY_ON_TIMEOUT = var.redis_retry_on_timeout
+      REDIS_DECODE_RESPONSES = var.redis_decode_responses
     }
   }
 
@@ -55,10 +69,20 @@ resource "aws_lambda_function" "extractor" {
   environment {
     variables = {
       BASE_URL = var.base_url
+      PG_DATABASE_URL = var.database_url
+      REDIS_URL = var.redis_url
       S3_BUCKET_NAME = aws_s3_bucket.data_bucket.id
       S3_REGION = var.s3_region
       USER_AGENT = var.user_agent
       GOOGLE_MAPS_API_KEY = var.google_maps_api_key
+      DB_ECHO = var.db_echo
+      DB_POOL_SIZE = var.db_pool_size
+      DB_MAX_OVERFLOW = var.db_max_overflow
+      DB_POOL_TIMEOUT = var.db_pool_timeout
+      REDIS_SOCKET_TIMEOUT = var.redis_socket_timeout
+      REDIS_SOCKET_CONNECT_TIMEOUT = var.redis_socket_connect_timeout
+      REDIS_RETRY_ON_TIMEOUT = var.redis_retry_on_timeout
+      REDIS_DECODE_RESPONSES = var.redis_decode_responses
     }
   }
 
@@ -81,13 +105,21 @@ resource "aws_lambda_function" "loader" {
 
   environment {
     variables = {
+      BASE_URL = var.base_url
       PG_DATABASE_URL = var.database_url
-      S3_BUCKET_NAME  = aws_s3_bucket.data_bucket.id
+      REDIS_URL = var.redis_url
+      S3_BUCKET_NAME = aws_s3_bucket.data_bucket.id
       S3_REGION = var.s3_region
+      USER_AGENT = var.user_agent
+      GOOGLE_MAPS_API_KEY = var.google_maps_api_key
       DB_ECHO = var.db_echo
       DB_POOL_SIZE = var.db_pool_size
       DB_MAX_OVERFLOW = var.db_max_overflow
       DB_POOL_TIMEOUT = var.db_pool_timeout
+      REDIS_SOCKET_TIMEOUT = var.redis_socket_timeout
+      REDIS_SOCKET_CONNECT_TIMEOUT = var.redis_socket_connect_timeout
+      REDIS_RETRY_ON_TIMEOUT = var.redis_retry_on_timeout
+      REDIS_DECODE_RESPONSES = var.redis_decode_responses
     }
   }
 
