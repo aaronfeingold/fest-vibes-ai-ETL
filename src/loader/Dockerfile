@@ -12,6 +12,18 @@ RUN pipenv install --deploy --system
 COPY src/shared /app/shared
 COPY src/loader /app/loader
 
+# Pre-download SentenceTransformer model to avoid runtime caching issues
+# Set cache directories to /app/models which will be copied to runtime stage
+ENV TRANSFORMERS_CACHE=/app/models/transformers
+ENV HF_HOME=/app/models/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models/sentence_transformers
+
+# Create model cache directories
+RUN mkdir -p /app/models/transformers /app/models/huggingface /app/models/sentence_transformers
+
+# Pre-download the sentence-transformers model
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 # Second stage: runtime
 FROM python:3.11-slim
 
@@ -30,6 +42,11 @@ COPY --from=builder /app /app
 
 # Set Python path to include app directory
 ENV PYTHONPATH=/app
+
+# Set cache environment variables to writable /tmp directory for Lambda runtime
+ENV TRANSFORMERS_CACHE=/tmp/transformers
+ENV HF_HOME=/tmp/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/tmp/sentence_transformers
 
 # Set Lambda handler
 CMD ["python", "-m", "awslambdaric", "loader.app.lambda_handler"]

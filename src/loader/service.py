@@ -26,7 +26,18 @@ class DatabaseService:
 
     def __init__(self):
         """Initialize the database loader."""
-        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        try:
+            # Initialize SentenceTransformer with better error handling
+            # Model should be pre-cached in container or will use /tmp cache
+            self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            logger.info("Successfully loaded SentenceTransformer model")
+        except Exception as e:
+            logger.error(f"Failed to load SentenceTransformer model: {str(e)}")
+            raise DatabaseError(
+                message=f"Failed to initialize embedding model: {str(e)}",
+                error_type=ErrorType.DATABASE_ERROR,
+                status_code=500,
+            )
 
     async def initialize(self):
         """Initialize the database connection and ensure tables exist."""
@@ -40,13 +51,24 @@ class DatabaseService:
         Args:
             event: Event object to generate embeddings for
         """
-        if event.description:
-            event.description_embedding = self.embedding_model.encode(event.description)
+        try:
+            if event.description:
+                event.description_embedding = self.embedding_model.encode(
+                    event.description
+                )
 
-        combined_text = (
-            f"{event.artist_name} {event.venue_name} {event.description or ''}"
-        )
-        event.event_text_embedding = self.embedding_model.encode(combined_text)
+            combined_text = (
+                f"{event.artist_name} {event.venue_name} {event.description or ''}"
+            )
+            event.event_text_embedding = self.embedding_model.encode(combined_text)
+            logger.debug(f"Generated embeddings for event: {event.artist_name}")
+        except Exception as e:
+            logger.error(
+                f"Failed to generate embeddings for event {event.artist_name}: {str(e)}"
+            )
+            # Set empty embeddings as fallback to prevent database errors
+            event.description_embedding = None
+            event.event_text_embedding = None
 
     async def get_or_create_genre(self, session: AsyncSession, name: str) -> Genre:
         """
