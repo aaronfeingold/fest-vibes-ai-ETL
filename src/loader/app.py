@@ -167,8 +167,25 @@ if __name__ == "__main__":
     mock_event = {"s3_key": s3_key}
     mock_context = None
 
-    # Run the loader
-    result = asyncio.run(app(mock_event, mock_context))
+    try:
+        logger.info("Starting loader execution...")
 
-    # Print the result
-    print(json.dumps(result, indent=2))
+        # Ensure we're calling the async function properly
+        coro = app(mock_event, mock_context)
+        logger.info(f"Created coroutine: {type(coro)}")
+
+        # Run the async function
+        result = asyncio.run(coro)
+
+        logger.info("Loader execution completed successfully")
+
+        # Print the result
+        print(json.dumps(result, indent=2))
+
+    except Exception as e:
+        logger.error(f"Error in main execution: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise

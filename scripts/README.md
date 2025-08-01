@@ -5,9 +5,11 @@ This directory contains enhanced scripts for building, pushing, and deploying th
 ## Scripts Overview
 
 ### 1. `build_and_push.sh` - Bash Script
+
 Enhanced bash script for ECR authentication, Docker builds, and deployment.
 
 **Key Features:**
+
 - ECR authentication with error handling
 - Multi-tag support (latest, version, commit hash, timestamp)
 - Parallel or sequential builds
@@ -16,6 +18,7 @@ Enhanced bash script for ECR authentication, Docker builds, and deployment.
 - Robust error handling
 
 **Usage Examples:**
+
 ```bash
 # Basic build (all components)
 ./scripts/build_and_push.sh
@@ -31,9 +34,11 @@ Enhanced bash script for ECR authentication, Docker builds, and deployment.
 ```
 
 ### 2. `build_and_push.py` - Python Script
+
 Python implementation that integrates with existing deployment utilities.
 
 **Key Features:**
+
 - Integration with `DeploymentManager` class
 - Uses existing version utilities from `shared.utils.version`
 - Thread-based parallel building
@@ -41,6 +46,7 @@ Python implementation that integrates with existing deployment utilities.
 - Terraform integration via deployment manager
 
 **Usage Examples:**
+
 ```bash
 # Basic build
 python3 scripts/build_and_push.py
@@ -56,9 +62,11 @@ python3 scripts/build_and_push.py --skip-build --terraform --tag latest
 ```
 
 ### 3. `deployment_utils.py` - Deployment Manager
+
 Existing utility for deployment management and ECR operations.
 
 **Usage Examples:**
+
 ```bash
 # Show current status
 python3 scripts/deployment_utils.py status
@@ -85,6 +93,7 @@ All images are tagged with multiple tags for flexibility:
 ## Component Architecture
 
 The scripts build and push these components:
+
 - **extractor** - Data extraction component
 - **loader** - Data loading component
 - **cache_manager** - Cache management component
@@ -134,16 +143,34 @@ Choose the script that best fits your workflow - bash for simplicity or Python f
 
 To test your Lambda functions locally using Docker images, use these commands:
 
+### Environment Variables Setup
+
+**Option 1: Create a `.env` file (recommended)**
+Create a `test.env` file in your project root:
+
+```bash
+# test.env
+TEST_S3_KEY=raw_events/2025/07/30/event_data_2025-07-29_20250730_002901.json
+AWS_LAMBDA_RUNTIME_API=localhost
+AWS_REGION=us-east-1
+AWS_ACCOUNT_ID=XXXXXXXXXXXXX
+# Add any other variables you need for testing
+```
+
+**Option 2: Export variables manually**
+
+```bash
+export TEST_S3_KEY=raw_events/2025/07/30/event_data_2025-07-29_20250730_002901.json
+export AWS_LAMBDA_RUNTIME_API=localhost
+```
+
 ### Testing Individual Components
 
 **1. Parameter Generator**
-```bash
-# Run with default parameters
-docker run --rm 937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest
 
-# Run with custom parameters
-docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest \
+```bash
+docker run --rm --env-file .env \
+  param_generator-test \
   python -c "
 import json
 from app import lambda_handler
@@ -153,13 +180,26 @@ print(json.dumps(result, indent=2))
 ```
 
 **2. Extractor**
+
 ```bash
-# Test extractor with sample date
-docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-extractor:latest \
+# Using .env file
+docker run --rm --env-file test.env \
+  extractor-test \
   python -c "
 import json
-from extract.app import lambda_handler
+from extractor.app import lambda_handler
+import asyncio
+event = {'queryStringParameters': {'date': '2025-01-30'}}
+result = asyncio.run(lambda_handler(event, None))
+print(json.dumps(result, indent=2))
+"
+
+# Using manual environment variables
+docker run --rm --env-file test.env \
+  extractor-test \
+  python -c "
+import json
+from extractor.app import lambda_handler
 import asyncio
 event = {'queryStringParameters': {'date': '2025-01-30'}}
 result = asyncio.run(lambda_handler(event, None))
@@ -168,23 +208,40 @@ print(json.dumps(result, indent=2))
 ```
 
 **3. Loader**
+
 ```bash
-# Test loader with sample S3 key
-docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-loader:latest \
+
+# Create test.env file with your variables, then:
+docker run --rm --env-file .env \
+  loader-test\
   python -c "
 import json
-from transform.app import lambda_handler
+import os
+from loader.app import lambda_handler
 import asyncio
-event = {'s3_key': 'events/2025-01-30.json'}
+s3_key = os.environ.get('TEST_S3_KEY', 'events/2025-01-30.json')
+event = {'s3_key': s3_key}
 result = asyncio.run(lambda_handler(event, None))
 print(json.dumps(result, indent=2))
 "
 ```
 
 **4. Cache Manager**
+
 ```bash
-# Test cache manager with sample date
+# Using .env file
+docker run --rm --env-file test.env \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-cache_manager:latest \
+  python -c "
+import json
+from load.app import lambda_handler
+import asyncio
+event = {'date': '2025-01-30'}
+result = asyncio.run(lambda_handler(event, None))
+print(json.dumps(result, indent=2))
+"
+
+# Using manual environment variables
 docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
   937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-cache_manager:latest \
   python -c "
@@ -198,9 +255,15 @@ print(json.dumps(result, indent=2))
 ```
 
 ### Interactive Testing
+
 ```bash
-# Run container interactively for debugging
-docker run -it --rm 937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest bash
+# Run container interactively with .env file
+docker run -it --rm --env-file test.env \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest bash
+
+# Or run with manual environment variables
+docker run -it --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
+  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-param_generator:latest bash
 
 # Inside container, test directly
 cd /app
@@ -215,16 +278,19 @@ print(json.dumps(result, indent=2))
 ### Debugging Tips
 
 1. **Check container contents**:
+
    ```bash
    docker run -it --rm image_name ls -la /app
    ```
 
 2. **Check Python imports**:
+
    ```bash
    docker run --rm image_name python -c "import sys; print(sys.path)"
    ```
 
 3. **Verify module structure**:
+
    ```bash
    docker run --rm image_name find /app -name "*.py" | head -20
    ```
