@@ -91,7 +91,7 @@ class Venue(Base):
         DateTime(timezone=True)
     )  # Track when we last geocoded this venue
     description = Column(Text)
-    venue_info_embedding = Column(Vector(384))  # Vector embedding for semantic search
+    embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     genres = relationship("Genre", secondary=VENUE_GENRE_TABLE, back_populates="venues")
     events = relationship("Event", back_populates="venue")
@@ -149,7 +149,7 @@ class Artist(Base):
     popularity_score = Column(Float)
     typical_set_length = Column(Interval)
     website = Column(String(255))
-    description_embedding = Column(Vector(384))  # Vector embedding for semantic search
+    embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     events = relationship("Event", back_populates="artist")
     venues = relationship(
@@ -225,7 +225,7 @@ class Event(Base):
     is_streaming = Column(Boolean, default=False)
     # Add vector embedding columns
     description_embedding = Column(Vector(384))  # Using all-MiniLM-L6-v2 model
-    event_text_embedding = Column(Vector(384))  # Combined text for semantic search
+    embedding = Column(Vector(384))  # Combined text for semantic search
 
     artist = relationship("Artist", back_populates="events")
     venue = relationship("Venue", back_populates="events")
@@ -264,7 +264,7 @@ class Genre(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    genre_embedding = Column(Vector(384))  # Vector embedding for semantic search
+    embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     # Fixed relationships
     venues = relationship("Venue", secondary=VENUE_GENRE_TABLE, back_populates="genres")
