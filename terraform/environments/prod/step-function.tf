@@ -48,6 +48,11 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         Type = "Map"
         ItemsPath = "$.dateRange.body.dates"
         MaxConcurrency = 5
+        ToleratedFailurePercentage = 10
+        Parameters = {
+          "date.$" = "$"
+          "iterationIndex.$" = "$$.Map.Item.Index"
+        }
         Iterator = {
           StartAt = "ExtractorTask"
           States = {
@@ -56,10 +61,18 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Resource = aws_lambda_function.extractor.arn
               Parameters = {
                 queryStringParameters = {
-                  "date.$" = "$"
+                  "date.$" = "$.date"
                 }
               }
               ResultPath = "$.extractorResult"
+              Retry = [
+                {
+                  ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
+                  IntervalSeconds = 2
+                  MaxAttempts = 3
+                  BackoffRate = 2.0
+                }
+              ]
               Next = "CheckExtractorStatus"
             }
             "CheckExtractorStatus" = {
@@ -82,9 +95,17 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Task"
               Resource = aws_lambda_function.loader.arn
               Parameters = {
-                s3_key = "$.extractorResult.body.s3_url"
+                "s3_key.$" = "$.extractorResult.body.s3_url"
               }
               ResultPath = "$.loaderResult"
+              Retry = [
+                {
+                  ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
+                  IntervalSeconds = 2
+                  MaxAttempts = 3
+                  BackoffRate = 2.0
+                }
+              ]
               Next = "CheckLoaderStatus"
             }
             "CheckLoaderStatus" = {
@@ -107,9 +128,17 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Task"
               Resource = aws_lambda_function.cache_manager.arn
               Parameters = {
-                date = "$"
+                "date.$" = "$.date"
               }
               ResultPath = "$.cacheResult"
+              Retry = [
+                {
+                  ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
+                  IntervalSeconds = 2
+                  MaxAttempts = 3
+                  BackoffRate = 2.0
+                }
+              ]
               Next = "CheckCacheStatus"
             }
             "CheckCacheStatus" = {
