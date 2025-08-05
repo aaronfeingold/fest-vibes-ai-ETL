@@ -1,5 +1,26 @@
 # CloudWatch Log Groups for Lambda functions with retention policies
 
+# Import existing log groups into Terraform state
+import {
+  to = aws_cloudwatch_log_group.param_generator
+  id = "/aws/lambda/fest-vibes-ai-param_generator"
+}
+
+import {
+  to = aws_cloudwatch_log_group.extractor
+  id = "/aws/lambda/fest-vibes-ai-extractor"
+}
+
+import {
+  to = aws_cloudwatch_log_group.loader
+  id = "/aws/lambda/fest-vibes-ai-loader"
+}
+
+import {
+  to = aws_cloudwatch_log_group.cache_manager
+  id = "/aws/lambda/fest-vibes-ai-cache_manager"
+}
+
 # Param Generator Lambda Log Group
 resource "aws_cloudwatch_log_group" "param_generator" {
   name              = "/aws/lambda/fest-vibes-ai-param_generator"
