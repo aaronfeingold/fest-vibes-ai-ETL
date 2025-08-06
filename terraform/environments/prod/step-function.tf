@@ -24,17 +24,18 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         Resource = aws_lambda_function.param_generator.arn
         Parameters = {
           days_ahead = 30
+          s3_bucket_name = var.s3_bucket_name
         }
-        ResultPath = "$.dateRange"
+        ResultPath = "$.params"
         Next = "CheckParamGeneratorStatus"
       }
       "CheckParamGeneratorStatus" = {
         Type = "Choice"
         Choices = [
           {
-            Variable = "$.dateRange.statusCode"
+            Variable = "$.params.statusCode"
             NumericEquals = 200
-            Next = "ProcessDateRangeParam"
+            Next = "ProcessParams"
           }
         ]
         Default = "ParamGeneratorFailed"
@@ -44,18 +45,23 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         Error = "ParamGeneratorTaskFailed"
         Cause = "Parameter generator task returned non-200 status code"
       }
-      "ProcessDateRangeParam" = {
+      "ProcessParams" = {
         Type = "Map"
-        ItemsPath = "$.dateRange.body.dates"
+        ItemsPath = "$.params.body.dates"
         MaxConcurrency = 5
         ToleratedFailurePercentage = 10
-        Parameters = {
-          "date.$" = "$"
-          "iterationIndex.$" = "$$.Map.Item.Index"
-        }
         Iterator = {
-          StartAt = "ExtractorTask"
+          StartAt = "InitializeState"
           States = {
+            "InitializeState" = {
+              Type = "Pass"
+              Parameters = {
+                "date.$" = "$",
+                "s3_bucket_name.$" = "$.Execution.Input.s3_bucket_name",
+                "state": {}
+              }
+              Next = "ExtractorTask"
+            },
             "ExtractorTask" = {
               Type = "Task"
               Resource = aws_lambda_function.extractor.arn
@@ -64,7 +70,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
                   "date.$" = "$.date"
                 }
               }
-              ResultPath = "$.extractorResult"
+              ResultPath = "$.state.extractorResult"
               Retry = [
                 {
                   ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
@@ -79,7 +85,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Choice"
               Choices = [
                 {
-                  Variable = "$.extractorResult.statusCode"
+                  Variable = "$.state.extractorResult.statusCode"
                   NumericEquals = 200
                   Next = "LoaderTask"
                 }
@@ -95,9 +101,11 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Task"
               Resource = aws_lambda_function.loader.arn
               Parameters = {
-                "s3_key.$" = "$.extractorResult.body.s3_url"
+                "s3_key.$" = "$.state.extractorResult.body.s3_key"
+                "date.$" = "$.date"
+                "extractorData.$" = "$.state.extractorResult"
               }
-              ResultPath = "$.loaderResult"
+              ResultPath = "$.state.loaderResult"
               Retry = [
                 {
                   ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
@@ -112,7 +120,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Choice"
               Choices = [
                 {
-                  Variable = "$.loaderResult.statusCode"
+                  Variable = "$.state.loaderResult.statusCode"
                   NumericEquals = 200
                   Next = "CacheTask"
                 }
@@ -129,8 +137,10 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Resource = aws_lambda_function.cache_manager.arn
               Parameters = {
                 "date.$" = "$.date"
+                "extractorData.$" = "$.state.extractorResult"
+                "loaderData.$" = "$.state.loaderResult"
               }
-              ResultPath = "$.cacheResult"
+              ResultPath = "$.state.cacheResult"
               Retry = [
                 {
                   ErrorEquals = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"]
@@ -145,7 +155,7 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Choice"
               Choices = [
                 {
-                  Variable = "$.cacheResult.statusCode"
+                  Variable = "$.state.cacheResult.statusCode"
                   NumericEquals = 200
                   Next = "Success"
                 }
