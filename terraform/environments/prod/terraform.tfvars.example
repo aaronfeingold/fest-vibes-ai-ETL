@@ -6,3 +6,7 @@ redis_url = "redis://username:password@hostname:6379"
 
 # Google Maps API key (optional)
 google_maps_api_key = "your-google-maps-api-key"
+
+base_url = "https://www.wwoz.org"
+
+s3_bucket_name = "fest-vibes-ai-etl-pipeline-data"
