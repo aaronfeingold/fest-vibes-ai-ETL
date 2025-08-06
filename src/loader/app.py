@@ -8,6 +8,7 @@ Main application for the database component.
 
 import asyncio
 import json
+import re
 from typing import Any, Dict
 
 from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
@@ -17,6 +18,40 @@ from shared.utils.helpers import generate_response
 from shared.utils.logger import logger
 
 from .service import DatabaseService
+
+
+def extract_date_from_s3_key(s3_key: str) -> str | None:
+    """
+    Extract date from S3 key format like:
+    raw_events/2025/07/30/event_data_2025-07-29_20250730_002901.json
+
+    Returns date in the app-wide format (YYYY-MM-DD) or None if not found.
+    """
+    try:
+        # Method 1: Extract from path structure (raw_events/YYYY/MM/DD/)
+        path_match = re.search(r"raw_events/(\d{4})/(\d{2})/(\d{2})/", s3_key)
+        if path_match:
+            year, month, day = path_match.groups()
+            return f"{year}-{month}-{day}"
+
+        # Method 2: Extract from filename (event_data_YYYY-MM-DD_)
+        filename_match = re.search(r"event_data_(\d{4}-\d{2}-\d{2})_", s3_key)
+        if filename_match:
+            return filename_match.group(1)
+
+        # Method 3: Extract YYYYMMDD format and convert
+        yyyymmdd_match = re.search(r"_(\d{8})_", s3_key)
+        if yyyymmdd_match:
+            date_str = yyyymmdd_match.group(1)
+            year = date_str[:4]
+            month = date_str[4:6]
+            day = date_str[6:8]
+            return f"{year}-{month}-{day}"
+
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to extract date from S3 key '{s3_key}': {e}")
+        return None
 
 
 async def app(
@@ -43,18 +78,27 @@ async def app(
 
     db_loader = None
     try:
-        # Extract S3 event details
-        s3_records = event.get("Records", [])
-        if not s3_records:
-            # Check for direct invocation with S3 key
-            s3_key = event.get("s3_key")
-            if not s3_key:
-                raise S3Error(
-                    message="No S3 records or key provided in the event",
-                    error_type=ErrorType.S3_ERROR,
+        s3_key = event.get("s3_key")
+        if not s3_key:
+            raise S3Error(
+                message="No S3 records or key provided in the event",
+                error_type=ErrorType.S3_ERROR,
+                status_code=400,
+            )
+        s3_records = [{"s3": s3_key}]
+
+        date = event.get("date")
+        if not date:
+            logger.warning(
+                "No date provided in the event, attempting to extract from S3 key"
+            )
+            date = extract_date_from_s3_key(s3_key)
+            if not date:
+                raise Exception(
+                    message="No date provided in event and could not extract date from S3 key",
                     status_code=400,
                 )
-            s3_records = [{"s3": s3_key}]
+            logger.info(f"Successfully extracted date '{date}' from S3 key: {s3_key}")
 
         # Initialize services
         s3 = S3Service()
@@ -106,6 +150,8 @@ async def app(
                 "status": "success",
                 "message": "Successfully loaded events into the database",
                 "operation_summary": operation_summary,
+                "s3_key": s3_key,
+                "date": date,
                 **aws_info,
             },
         )
