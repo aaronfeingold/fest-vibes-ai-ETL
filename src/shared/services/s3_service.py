@@ -82,7 +82,7 @@ class S3Service:
             s3_url = f"s3://{self.bucket_name}/{s3_key}"
             logger.info(f"Successfully uploaded events to {s3_url}")
 
-            return s3_url
+            return s3_url, s3_key
 
         except Exception as e:
             logger.error(f"Error uploading events to S3: {str(e)}")
