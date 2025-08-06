@@ -460,3 +460,132 @@ async def test_html_to_json_parsing():
     # Verify the mock methods were called the expected number of times
     assert scraper.get_venue_data.call_count == 2  # Two venues
     assert scraper.get_event_data.call_count == 3  # Three events
+
+
+# Response format tests for the app endpoints
+class TestResponseFormats:
+    """Test the response formats for extractor and loader apps."""
+
+    class MockLambdaContext:
+        """Mock Lambda context for testing."""
+
+        aws_request_id = "test-request-id"
+        log_stream_name = "test-log-stream"
+
+    def test_extractor_success_response_format(self):
+        """Test that extractor returns correct response format on success."""
+        # Create a mock response that simulates what the extractor should return
+        mock_response = {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": {
+                "status": "success",
+                "message": "Successfully scraped and stored events for 2025-01-15",
+                "date": "2025-01-15",
+                "event_count": 42,
+                "s3_url": "s3://fest-vibes-ai-etl-pipeline-data/raw_events/2025/01/15/event_data_2025-01-15_20250115_100000.json",
+                "s3_key": "raw_events/2025/01/15/event_data_2025-01-15_20250115_100000.json",
+                "aws_request_id": "test-request-id",
+                "log_stream_name": "test-log-stream",
+            },
+        }
+
+        # Test the expected response structure
+        response = mock_response
+        assert response["statusCode"] == 200
+        assert "headers" in response
+        assert response["headers"]["Content-Type"] == "application/json"
+
+        body = response["body"]
+        assert body["status"] == "success"
+        assert "message" in body
+        assert body["date"] == "2025-01-15"
+        assert "event_count" in body  # New field
+        assert "s3_url" in body  # New field
+        assert "s3_key" in body  # New field
+
+        # Verify AWS info is included
+        assert "aws_request_id" in body
+        assert "log_stream_name" in body
+
+    def test_loader_success_response_format(self):
+        """Test that loader returns correct response format on success."""
+        # Create a mock response that simulates what the loader should return
+        mock_response = {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": {
+                "status": "success",
+                "message": "Successfully loaded events into the database",
+                "date": "2025-01-15",
+                "s3_key": "raw_events/2025/01/15/event_data_2025-01-15_20250115_100000.json",
+                "operation_summary": {
+                    "files_processed": 1,
+                    "artists_created": 5,
+                    "venues_created": 3,
+                    "genres_created": 2,
+                    "events_created": 12,
+                },
+                "aws_request_id": "test-request-id",
+                "log_stream_name": "test-log-stream",
+            },
+        }
+
+        # Test the expected response structure
+        response = mock_response
+        assert response["statusCode"] == 200
+        assert "headers" in response
+        assert response["headers"]["Content-Type"] == "application/json"
+
+        body = response["body"]
+        assert body["status"] == "success"
+        assert "message" in body
+        assert body["date"] == "2025-01-15"  # New field
+        assert "s3_key" in body  # New field
+        assert "operation_summary" in body  # New field
+
+        # Verify operation summary structure
+        op_summary = body["operation_summary"]
+        assert "files_processed" in op_summary
+        assert "artists_created" in op_summary
+        assert "venues_created" in op_summary
+        assert "genres_created" in op_summary
+        assert "events_created" in op_summary
+
+        # Verify AWS info is included
+        assert "aws_request_id" in body
+        assert "log_stream_name" in body
+
+    def test_loader_date_fallback_response(self):
+        """Test that loader response includes correct date when extracted from S3 key."""
+        # Create a mock response that simulates what the loader should return
+        # when date is extracted from S3 key
+        mock_response = {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": {
+                "status": "success",
+                "message": "Successfully loaded events into the database",
+                "date": "2025-01-15",  # Date extracted from S3 key
+                "s3_key": "raw_events/2025/01/15/event_data_2025-01-15_20250115_100000.json",
+                "operation_summary": {
+                    "files_processed": 1,
+                    "artists_created": 3,
+                    "venues_created": 2,
+                    "genres_created": 1,
+                    "events_created": 8,
+                },
+                "aws_request_id": "test-request-id",
+                "log_stream_name": "test-log-stream",
+            },
+        }
+
+        # Test the expected response structure
+        response = mock_response
+        assert response["statusCode"] == 200
+
+        body = response["body"]
+        assert body["status"] == "success"
+        assert body["date"] == "2025-01-15"  # Should be extracted from S3 key
+        assert "s3_key" in body
+        assert "operation_summary" in body

@@ -47,7 +47,7 @@ async def app(
         events = await scraper.run(params)
 
         s3 = S3Service()
-        s3_url = await s3.upload_events_to_s3(
+        s3_url, s3_key = await s3.upload_events_to_s3(
             events=events, scrape_date_str=params["date"]
         )
         logger.info(f"Uploaded event data to S3: {s3_url}")
@@ -60,6 +60,7 @@ async def app(
                 "date": params["date"],
                 "event_count": len(events),
                 "s3_url": s3_url,
+                "s3_key": s3_key,
                 **aws_info,
             },
         )
