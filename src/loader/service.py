@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, List
 
 from sentence_transformers import SentenceTransformer
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.db.database import db
@@ -72,7 +72,10 @@ class DatabaseService:
 
     async def get_or_create_genre(self, session: AsyncSession, name: str) -> Genre:
         """
-        Get or create a genre.
+        Get or create a genre using PostgreSQL's ON CONFLICT for thread safety.
+
+        This method prevents deadlocks when multiple concurrent processes try to
+        create the same genre by using PostgreSQL's native ON CONFLICT clause.
 
         Args:
             session: Database session
@@ -81,12 +84,49 @@ class DatabaseService:
         Returns:
             Genre object
         """
-        result = await session.execute(select(Genre).filter_by(name=name))
-        genre = result.scalar_one_or_none()
-        if not genre:
-            genre = Genre(name=name)
-            session.add(genre)
-        return genre
+        try:
+            # Use PostgreSQL's ON CONFLICT to handle concurrent inserts gracefully
+            result = await session.execute(
+                text(
+                    """
+                    INSERT INTO genres (name)
+                    VALUES (:name)
+                    ON CONFLICT (name) DO NOTHING
+                    RETURNING id, name, description
+                """
+                ),
+                {"name": name},
+            )
+
+            genre_row = result.fetchone()
+
+            if genre_row:
+                # Genre was just created, return new object
+                genre = Genre(
+                    id=genre_row.id,
+                    name=genre_row.name,
+                    description=genre_row.description,
+                )
+                # Add to session so SQLAlchemy can track it for relationships
+                session.add(genre)
+                return genre
+            else:
+                # Genre already existed, fetch it normally
+                result = await session.execute(select(Genre).filter_by(name=name))
+                return result.scalar_one()
+
+        except Exception as e:
+            logger.warning(f"Error in upsert for genre '{name}': {e}")
+            # Fallback to simple select (genre should exist now)
+            result = await session.execute(select(Genre).filter_by(name=name))
+            genre = result.scalar_one_or_none()
+            if not genre:
+                # This should be very rare, but create as fallback
+                logger.info(f"Fallback: Creating genre '{name}' after upsert failed")
+                genre = Genre(name=name)
+                session.add(genre)
+                await session.flush()
+            return genre
 
     async def save_events(self, events: List[EventDTO]) -> Dict[str, int]:
         """
