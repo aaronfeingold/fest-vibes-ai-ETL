@@ -106,11 +106,95 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-## Local Development & Testing
-### Test Suites
-**Ensure the PYTHONPATH is set**
+## Database Migrations
+
+The project includes database migrations to optimize performance and add new features. Migrations are stored in `src/shared/db/migrations/`.
+
+### Running Migrations
+
+**Prerequisites:**
+- Database connection configured in `PG_DATABASE_URL`
+- PostgreSQL client (`psql`) installed
+- Database server accessible
+
+**Run a specific migration:**
 ```sh
-PYTHONPATH=. pytest tests/simple_tests.py
+# Run the concurrency optimization migration
+psql $PG_DATABASE_URL -f src/shared/db/migrations/add_concurrency_indexes.sql
+
+# Or if using connection parameters:
+psql -h hostname -p port -U username -d database -f src/shared/db/migrations/add_concurrency_indexes.sql
+```
+
+**Check migration status:**
+```sh
+# List all indexes to verify migration completed
+psql $PG_DATABASE_URL -c "\d+ artists" -c "\d+ venues" -c "\d+ events"
+
+# Check specific concurrency indexes
+psql $PG_DATABASE_URL -c "SELECT indexname, tablename FROM pg_indexes WHERE indexname LIKE 'idx_%' ORDER BY tablename, indexname;"
+```
+
+**Important Notes:**
+- All indexes use `CREATE INDEX CONCURRENTLY` for zero-downtime deployment
+- Migrations are idempotent and safe to run multiple times
+- The concurrency optimization migration adds critical indexes to prevent deadlocks with concurrent Lambda executions
+
+## Local Development & Testing
+
+### Environment Setup for Tests
+**Important**: Tests require database connection and environment variables to be set.
+
+**Option 1: Using pipenv (Recommended - auto-loads .env)**
+```sh
+pipenv run pytest tests/simple_tests.py
+pipenv run pytest tests/test_concurrency_optimization.py
+```
+
+**Option 2: Manual environment loading**
+```sh
+# Load .env file manually and run tests
+export $(cat .env | xargs) && PYTHONPATH=. pytest tests/simple_tests.py
+
+# Or set specific variables
+PG_DATABASE_URL="postgresql://user:pass@host:5432/db" PYTHONPATH=. pytest tests/simple_tests.py
+```
+
+**Option 3: Using python-dotenv**
+```sh
+pip install python-dotenv
+PYTHONPATH=. python -c "from dotenv import load_dotenv; load_dotenv(); import pytest; pytest.main(['tests/simple_tests.py'])"
+```
+
+### Test Suites
+
+**Basic functionality tests:**
+```sh
+pipenv run pytest tests/simple_tests.py -v
+```
+
+**Concurrency optimization tests:**
+```sh
+pipenv run pytest tests/test_concurrency_optimization.py -v
+```
+
+**All tests:**
+```sh
+pipenv run pytest tests/ -v
+```
+
+**Specific test class or method:**
+```sh
+# Run specific test class
+pipenv run pytest tests/test_concurrency_optimization.py::TestConcurrencyOptimizations -v
+
+# Run specific test method
+pipenv run pytest tests/test_concurrency_optimization.py::TestConcurrencyOptimizations::test_deadlock_retry_logic_exists -v
+```
+
+### Test Coverage
+```sh
+pipenv run pytest tests/ --cov=src --cov-report=html
 ```
 
 ### Test Run

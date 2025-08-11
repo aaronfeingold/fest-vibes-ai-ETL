@@ -57,9 +57,21 @@ db_configs = {
     "pg_database_url": os.getenv("PG_DATABASE_URL"),
     "echo": os.getenv("DB_ECHO", "false").lower()
     == "true",  # Set to True for debugging
-    "pool_size": int(os.getenv("DB_POOL_SIZE", 5)),
-    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", 10)),
-    "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", 30)),
+    "pool_size": int(
+        os.getenv("DB_POOL_SIZE", 3)
+    ),  # Reduced per-Lambda pool for concurrency
+    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", 2)),  # Max 5 total per Lambda
+    "pool_timeout": int(
+        os.getenv("DB_POOL_TIMEOUT", 10)
+    ),  # Faster timeout for contention
+    "pool_recycle": int(
+        os.getenv("DB_POOL_RECYCLE", 300)
+    ),  # Recycle connections every 5min
+    "pool_pre_ping": os.getenv("DB_POOL_PRE_PING", "true").lower()
+    == "true",  # Health check connections
+    "isolation_level": os.getenv(
+        "DB_ISOLATION_LEVEL", "READ_COMMITTED"
+    ),  # Reduce lock scope
 }
 
 s3_configs = {

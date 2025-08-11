@@ -63,6 +63,9 @@ class Database:
                 pool_size=db_configs["pool_size"],
                 max_overflow=db_configs["max_overflow"],
                 pool_timeout=db_configs["pool_timeout"],
+                pool_recycle=db_configs["pool_recycle"],
+                pool_pre_ping=db_configs["pool_pre_ping"],
+                isolation_level=db_configs["isolation_level"],
                 connect_args=self.connect_args,
             )
 
@@ -114,6 +117,9 @@ class Database:
                 else:
                     logger.info("Tables already exist, skipping creation")
 
+                # Apply concurrency optimization indexes
+                await self.create_concurrency_indexes(conn)
+
         except Exception as e:
             logger.error(f"Failed to create tables: {str(e)}")
             raise DatabaseError(
@@ -121,6 +127,93 @@ class Database:
                 error_type=ErrorType.DATABASE_ERROR,
                 status_code=500,
             )
+
+    async def create_concurrency_indexes(self, conn):
+        """Create indexes optimized for concurrent access patterns."""
+        try:
+            logger.info("Creating concurrency optimization indexes...")
+
+            # Artists table - enable atomic upserts by name
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artists_name ON artists(name);"
+                )
+            )
+
+            # Venues table - composite key for venue uniqueness (name + address)
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_venues_name_address ON venues(name, full_address);"
+                )
+            )
+
+            # Events table - prevent duplicate events by WWOZ href
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_events_href ON events(wwoz_event_href);"
+                )
+            )
+
+            # Performance indexes for common foreign key lookups
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_artist_venue ON events(artist_id, venue_id);"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_performance_time ON events(performance_time);"
+                )
+            )
+
+            # Artist relations table - prevent duplicate relationships
+            await conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_relations_unique ON artist_relations(artist_id, related_artist_id);"
+                )
+            )
+
+            # Add indexes for common join patterns in association tables
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_event_id ON event_genres(event_id);"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_genre_id ON event_genres(genre_id);"
+                )
+            )
+
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_artist_id ON artist_genres(artist_id);"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_genre_id ON artist_genres(genre_id);"
+                )
+            )
+
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_venue_id ON venue_genres(venue_id);"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_genre_id ON venue_genres(genre_id);"
+                )
+            )
+
+            logger.info("Concurrency optimization indexes created successfully")
+
+        except Exception as e:
+            logger.warning(
+                f"Some indexes may already exist or failed to create: {str(e)}"
+            )
+            # Don't raise exception for index creation failures as they may already exist
 
     @asynccontextmanager
     async def session(self) -> AsyncGenerator[AsyncSession, None]:

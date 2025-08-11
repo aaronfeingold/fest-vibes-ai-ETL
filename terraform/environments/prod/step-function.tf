@@ -24,7 +24,6 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
         Resource = aws_lambda_function.param_generator.arn
         Parameters = {
           days_ahead = 30
-          s3_bucket_name = var.s3_bucket_name
         }
         ResultPath = "$.params"
         Next = "CheckParamGeneratorStatus"
@@ -57,7 +56,6 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Pass"
               Parameters = {
                 "date.$" = "$",
-                "s3_bucket_name.$" = "$.Execution.Input.s3_bucket_name",
                 "state": {}
               }
               Next = "ExtractorTask"

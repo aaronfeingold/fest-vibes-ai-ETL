@@ -109,7 +109,6 @@ async def app(
         operation_summary = {
             "files_processed": len(s3_records),
             "artists_created": 0,
-            "artists_created": 0,
             "venues_created": 0,
             "genres_created": 0,
             "events_created": 0,
