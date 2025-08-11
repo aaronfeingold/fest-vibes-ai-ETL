@@ -141,10 +141,60 @@ psql $PG_DATABASE_URL -c "SELECT indexname, tablename FROM pg_indexes WHERE inde
 - The concurrency optimization migration adds critical indexes to prevent deadlocks with concurrent Lambda executions
 
 ## Local Development & Testing
-### Test Suites
-**Ensure the PYTHONPATH is set**
+
+### Environment Setup for Tests
+**Important**: Tests require database connection and environment variables to be set.
+
+**Option 1: Using pipenv (Recommended - auto-loads .env)**
 ```sh
-PYTHONPATH=. pytest tests/simple_tests.py
+pipenv run pytest tests/simple_tests.py
+pipenv run pytest tests/test_concurrency_optimization.py
+```
+
+**Option 2: Manual environment loading**
+```sh
+# Load .env file manually and run tests
+export $(cat .env | xargs) && PYTHONPATH=. pytest tests/simple_tests.py
+
+# Or set specific variables
+PG_DATABASE_URL="postgresql://user:pass@host:5432/db" PYTHONPATH=. pytest tests/simple_tests.py
+```
+
+**Option 3: Using python-dotenv**
+```sh
+pip install python-dotenv
+PYTHONPATH=. python -c "from dotenv import load_dotenv; load_dotenv(); import pytest; pytest.main(['tests/simple_tests.py'])"
+```
+
+### Test Suites
+
+**Basic functionality tests:**
+```sh
+pipenv run pytest tests/simple_tests.py -v
+```
+
+**Concurrency optimization tests:**
+```sh
+pipenv run pytest tests/test_concurrency_optimization.py -v
+```
+
+**All tests:**
+```sh
+pipenv run pytest tests/ -v
+```
+
+**Specific test class or method:**
+```sh
+# Run specific test class
+pipenv run pytest tests/test_concurrency_optimization.py::TestConcurrencyOptimizations -v
+
+# Run specific test method
+pipenv run pytest tests/test_concurrency_optimization.py::TestConcurrencyOptimizations::test_deadlock_retry_logic_exists -v
+```
+
+### Test Coverage
+```sh
+pipenv run pytest tests/ --cov=src --cov-report=html
 ```
 
 ### Test Run
