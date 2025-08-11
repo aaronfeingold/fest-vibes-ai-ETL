@@ -106,6 +106,40 @@ pre-commit install
 pre-commit run --all-files
 ```
 
+## Database Migrations
+
+The project includes database migrations to optimize performance and add new features. Migrations are stored in `src/shared/db/migrations/`.
+
+### Running Migrations
+
+**Prerequisites:**
+- Database connection configured in `PG_DATABASE_URL`
+- PostgreSQL client (`psql`) installed
+- Database server accessible
+
+**Run a specific migration:**
+```sh
+# Run the concurrency optimization migration
+psql $PG_DATABASE_URL -f src/shared/db/migrations/add_concurrency_indexes.sql
+
+# Or if using connection parameters:
+psql -h hostname -p port -U username -d database -f src/shared/db/migrations/add_concurrency_indexes.sql
+```
+
+**Check migration status:**
+```sh
+# List all indexes to verify migration completed
+psql $PG_DATABASE_URL -c "\d+ artists" -c "\d+ venues" -c "\d+ events"
+
+# Check specific concurrency indexes
+psql $PG_DATABASE_URL -c "SELECT indexname, tablename FROM pg_indexes WHERE indexname LIKE 'idx_%' ORDER BY tablename, indexname;"
+```
+
+**Important Notes:**
+- All indexes use `CREATE INDEX CONCURRENTLY` for zero-downtime deployment
+- Migrations are idempotent and safe to run multiple times
+- The concurrency optimization migration adds critical indexes to prevent deadlocks with concurrent Lambda executions
+
 ## Local Development & Testing
 ### Test Suites
 **Ensure the PYTHONPATH is set**
