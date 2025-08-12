@@ -268,6 +268,12 @@ resource "aws_cloudwatch_event_target" "step_function_target" {
   input = jsonencode({})
 }
 
+# Import existing EventBridge IAM role
+import {
+  to = aws_iam_role.eventbridge_step_function_role
+  id = "fest-vibes-ai-eventbridge-step-function-role"
+}
+
 # IAM Role for EventBridge to invoke Step Function
 resource "aws_iam_role" "eventbridge_step_function_role" {
   name = "fest-vibes-ai-eventbridge-step-function-role"
@@ -290,6 +296,12 @@ resource "aws_iam_role" "eventbridge_step_function_role" {
     Environment = "prod"
     Project     = "fest-vibes-ai"
   }
+}
+
+# Import existing EventBridge IAM policy
+import {
+  to = aws_iam_policy.eventbridge_step_function
+  id = "arn:aws:iam::937355130135:policy/fest-vibes-ai-eventbridge-step-function"
 }
 
 # IAM Policy for EventBridge to invoke Step Function
