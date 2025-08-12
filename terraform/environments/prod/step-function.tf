@@ -241,3 +241,80 @@ resource "aws_iam_role_policy_attachment" "step_function_lambda" {
   role       = aws_iam_role.step_function_role.name
   policy_arn = aws_iam_policy.step_function_lambda.arn
 }
+
+# CloudWatch Event Rule to trigger Step Function daily at 3 AM CST/CDT
+resource "aws_cloudwatch_event_rule" "daily_etl_trigger" {
+  name                = "fest-vibes-ai-daily-etl-trigger"
+  description         = "Triggers ETL pipeline daily at 3 AM CST/CDT"
+  # UTC equivalent: 3 AM CST = 9 AM UTC (CST is UTC-6), 3 AM CDT = 8 AM UTC (CDT is UTC-5)
+  # Using 8 AM UTC to account for CDT (daylight saving time)
+  schedule_expression = "cron(0 8 * * ? *)"
+
+  tags = {
+    Name        = "fest-vibes-ai-daily-etl-trigger"
+    Environment = "prod"
+    Project     = "fest-vibes-ai"
+  }
+}
+
+# CloudWatch Event Target - Step Function
+resource "aws_cloudwatch_event_target" "step_function_target" {
+  rule      = aws_cloudwatch_event_rule.daily_etl_trigger.name
+  target_id = "TriggerStepFunction"
+  arn       = aws_sfn_state_machine.etl_pipeline.arn
+  role_arn  = aws_iam_role.eventbridge_step_function_role.arn
+
+  # Input to pass to Step Function (empty object since param generator creates the dates)
+  input = jsonencode({})
+}
+
+# IAM Role for EventBridge to invoke Step Function
+resource "aws_iam_role" "eventbridge_step_function_role" {
+  name = "fest-vibes-ai-eventbridge-step-function-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "fest-vibes-ai-eventbridge-step-function-role"
+    Environment = "prod"
+    Project     = "fest-vibes-ai"
+  }
+}
+
+# IAM Policy for EventBridge to invoke Step Function
+resource "aws_iam_policy" "eventbridge_step_function" {
+  name        = "fest-vibes-ai-eventbridge-step-function"
+  description = "Allows EventBridge to start Step Function executions"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "states:StartExecution"
+        ]
+        Resource = [
+          aws_sfn_state_machine.etl_pipeline.arn
+        ]
+      }
+    ]
+  })
+}
+
+# Attach policy to EventBridge role
+resource "aws_iam_role_policy_attachment" "eventbridge_step_function" {
+  role       = aws_iam_role.eventbridge_step_function_role.name
+  policy_arn = aws_iam_policy.eventbridge_step_function.arn
+}

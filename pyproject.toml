@@ -1,6 +1,6 @@
 [project]
 name = "fest-vibes-ai-etl-pipeline"
-version = "0.0.16"
+version = "0.0.17"
 description = "ETL Pipeline for Festival and Events Data Processing"
 requires-python = ">=3.11"
 dependencies = [
