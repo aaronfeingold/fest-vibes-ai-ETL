@@ -177,14 +177,13 @@ class DatabaseService:
 
             if artist_row:
                 # Artist was created or updated, fetch it to get proper SQLAlchemy object
-                result = await session.execute(
-                    select(Artist).filter_by(id=artist_row.id)
-                )
+                artist_id = artist_row[0]  # Get ID from the first column
+                result = await session.execute(select(Artist).filter_by(id=artist_id))
                 artist = result.scalar_one()
 
-                # Set genres if provided
+                # Handle genres association properly for async context
                 if genre_objects:
-                    artist.genres = genre_objects
+                    await self._associate_artist_genres(session, artist, genre_objects)
 
                 return artist
             else:
@@ -194,7 +193,7 @@ class DatabaseService:
                 )
                 artist = result.scalar_one()
                 if genre_objects:
-                    artist.genres = genre_objects
+                    await self._associate_artist_genres(session, artist, genre_objects)
                 return artist
 
         except Exception as e:
@@ -214,13 +213,104 @@ class DatabaseService:
                     wwoz_artist_href=artist_data.wwoz_artist_href,
                     description=artist_data.description,
                     website=artist_data.website,
-                    genres=genre_objects,
                 )
                 session.add(artist)
                 await session.flush()
+                if genre_objects:
+                    await self._associate_artist_genres(session, artist, genre_objects)
             elif genre_objects:
-                artist.genres = genre_objects
+                await self._associate_artist_genres(session, artist, genre_objects)
             return artist
+
+    async def _associate_artist_genres(
+        self, session: AsyncSession, artist: Artist, genre_objects: List[Genre]
+    ):
+        """
+        Associate artist with genres using the association table to avoid greenlet_spawn errors.
+
+        Args:
+            session: Database session
+            artist: Artist object
+            genre_objects: List of Genre objects to associate
+        """
+        try:
+            # First, remove existing associations to avoid duplicates
+            await session.execute(
+                text("DELETE FROM artist_genres WHERE artist_id = :artist_id"),
+                {"artist_id": artist.id},
+            )
+
+            # Add new associations
+            for genre in genre_objects:
+                await session.execute(
+                    text(
+                        "INSERT INTO artist_genres (artist_id, genre_id) VALUES (:artist_id, :genre_id) ON CONFLICT DO NOTHING"
+                    ),
+                    {"artist_id": artist.id, "genre_id": genre.id},
+                )
+
+        except Exception as e:
+            logger.warning(f"Error associating genres for artist '{artist.name}': {e}")
+
+    async def _associate_venue_genres(
+        self, session: AsyncSession, venue: Venue, genre_objects: List[Genre]
+    ):
+        """
+        Associate venue with genres using the association table to avoid greenlet_spawn errors.
+
+        Args:
+            session: Database session
+            venue: Venue object
+            genre_objects: List of Genre objects to associate
+        """
+        try:
+            # First, remove existing associations to avoid duplicates
+            await session.execute(
+                text("DELETE FROM venue_genres WHERE venue_id = :venue_id"),
+                {"venue_id": venue.id},
+            )
+
+            # Add new associations
+            for genre in genre_objects:
+                await session.execute(
+                    text(
+                        "INSERT INTO venue_genres (venue_id, genre_id) VALUES (:venue_id, :genre_id) ON CONFLICT DO NOTHING"
+                    ),
+                    {"venue_id": venue.id, "genre_id": genre.id},
+                )
+
+        except Exception as e:
+            logger.warning(f"Error associating genres for venue '{venue.name}': {e}")
+
+    async def _associate_event_genres(
+        self, session: AsyncSession, event: Event, genre_objects: List[Genre]
+    ):
+        """
+        Associate event with genres using the association table to avoid greenlet_spawn errors.
+
+        Args:
+            session: Database session
+            event: Event object
+            genre_objects: List of Genre objects to associate
+        """
+        try:
+            # First, remove existing associations to avoid duplicates
+            await session.execute(
+                text("DELETE FROM event_genres WHERE event_id = :event_id"),
+                {"event_id": event.id},
+            )
+
+            # Add new associations
+            for genre in genre_objects:
+                await session.execute(
+                    text(
+                        "INSERT INTO event_genres (event_id, genre_id) VALUES (:event_id, :genre_id) ON CONFLICT DO NOTHING"
+                    ),
+                    {"event_id": event.id, "genre_id": genre.id},
+                )
+
+        except Exception as e:
+            logger.warning(f"Error associating genres for event '{event.id}': {e}")
 
     async def upsert_venue(
         self, session: AsyncSession, venue_data, genre_objects: List[Genre]
@@ -264,7 +354,9 @@ class DatabaseService:
 
                 # Update genres if provided
                 if genre_objects:
-                    existing_venue.genres = genre_objects
+                    await self._associate_venue_genres(
+                        session, existing_venue, genre_objects
+                    )
 
                 return existing_venue
 
@@ -336,7 +428,7 @@ class DatabaseService:
 
                 # Set genres if provided
                 if genre_objects:
-                    venue.genres = genre_objects
+                    await self._associate_venue_genres(session, venue, genre_objects)
 
                 return venue
             else:
@@ -348,7 +440,7 @@ class DatabaseService:
                 )
                 venue = result.scalar_one()
                 if genre_objects:
-                    venue.genres = genre_objects
+                    await self._associate_venue_genres(session, venue, genre_objects)
                 return venue
 
         except Exception as e:
@@ -431,7 +523,9 @@ class DatabaseService:
 
                     # Update genres if provided
                     if genres:
-                        existing_event.genres = genres
+                        await self._associate_event_genres(
+                            session, existing_event, genres
+                        )
 
                     return existing_event
 

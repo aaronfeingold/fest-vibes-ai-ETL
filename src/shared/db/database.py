@@ -133,78 +133,69 @@ class Database:
         try:
             logger.info("Creating concurrency optimization indexes...")
 
+            # Try CONCURRENTLY first, fall back to regular CREATE INDEX if in transaction
+            async def create_index_safe(index_sql):
+                try:
+                    await conn.execute(text(index_sql))
+                except Exception as e:
+                    if "cannot run inside a transaction block" in str(e):
+                        # Remove CONCURRENTLY and try again
+                        fallback_sql = index_sql.replace(" CONCURRENTLY", "")
+                        logger.warning(
+                            f"Falling back to regular CREATE INDEX: {fallback_sql}"
+                        )
+                        await conn.execute(text(fallback_sql))
+                    else:
+                        raise
+
             # Artists table - enable atomic upserts by name
-            await conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artists_name ON artists(name);"
-                )
+            await create_index_safe(
+                "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artists_name ON artists(name);"
             )
 
             # Venues table - composite key for venue uniqueness (name + address)
-            await conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_venues_name_address ON venues(name, full_address);"
-                )
+            await create_index_safe(
+                "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_venues_name_address ON venues(name, full_address);"
             )
 
             # Events table - prevent duplicate events by WWOZ href
-            await conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_events_href ON events(wwoz_event_href);"
-                )
+            await create_index_safe(
+                "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_events_href ON events(wwoz_event_href);"
             )
 
             # Performance indexes for common foreign key lookups
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_artist_venue ON events(artist_id, venue_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_artist_venue ON events(artist_id, venue_id);"
             )
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_performance_time ON events(performance_time);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_events_performance_time ON events(performance_time);"
             )
 
             # Artist relations table - prevent duplicate relationships
-            await conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_relations_unique ON artist_relations(artist_id, related_artist_id);"
-                )
+            await create_index_safe(
+                "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_relations_unique ON artist_relations(artist_id, related_artist_id);"
             )
 
             # Add indexes for common join patterns in association tables
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_event_id ON event_genres(event_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_event_id ON event_genres(event_id);"
             )
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_genre_id ON event_genres(genre_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_genres_genre_id ON event_genres(genre_id);"
             )
 
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_artist_id ON artist_genres(artist_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_artist_id ON artist_genres(artist_id);"
             )
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_genre_id ON artist_genres(genre_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artist_genres_genre_id ON artist_genres(genre_id);"
             )
 
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_venue_id ON venue_genres(venue_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_venue_id ON venue_genres(venue_id);"
             )
-            await conn.execute(
-                text(
-                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_genre_id ON venue_genres(genre_id);"
-                )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_genre_id ON venue_genres(genre_id);"
             )
 
             logger.info("Concurrency optimization indexes created successfully")
