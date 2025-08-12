@@ -103,15 +103,9 @@ class DatabaseService:
             genre_row = result.fetchone()
 
             if genre_row:
-                # Genre was just created, return new object
-                genre = Genre(
-                    id=genre_row.id,
-                    name=genre_row.name,
-                    description=genre_row.description,
-                )
-                # Add to session so SQLAlchemy can track it for relationships
-                session.add(genre)
-                return genre
+                # Genre was just created, fetch it to get proper SQLAlchemy object
+                result = await session.execute(select(Genre).filter_by(id=genre_row.id))
+                return result.scalar_one()
             else:
                 # Genre already existed, fetch it normally
                 result = await session.execute(select(Genre).filter_by(name=name))
@@ -172,16 +166,11 @@ class DatabaseService:
             artist_row = result.fetchone()
 
             if artist_row:
-                # Artist was created or updated, create object
-                artist = Artist(
-                    id=artist_row.id,
-                    name=artist_row.name,
-                    wwoz_artist_href=artist_row.wwoz_artist_href,
-                    description=artist_row.description,
-                    website=artist_row.website,
+                # Artist was created or updated, fetch it to get proper SQLAlchemy object
+                result = await session.execute(
+                    select(Artist).filter_by(id=artist_row.id)
                 )
-                # Add to session so SQLAlchemy can track it for relationships
-                session.add(artist)
+                artist = result.scalar_one()
 
                 # Set genres if provided
                 if genre_objects:
@@ -656,6 +645,15 @@ class DatabaseService:
                 await session.rollback()
                 batch_duration = time.time() - batch_start_time
                 logger.error(f"Batch failed after {batch_duration:.2f}s: {str(e)}")
+
+                # Check if this is a constraint violation that we should handle gracefully
+                error_str = str(e).lower()
+                if "duplicate key" in error_str or "constraint" in error_str:
+                    logger.warning(
+                        f"Constraint violation in batch processing: {str(e)}"
+                    )
+                    # Re-raise to trigger retry logic in the wrapper
+
                 raise
 
     async def save_events(self, events: List[EventDTO]) -> Dict[str, int]:
