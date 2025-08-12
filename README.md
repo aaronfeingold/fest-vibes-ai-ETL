@@ -466,7 +466,9 @@ The GitHub Actions workflow automates the complete deployment process:
 
 ### ETL Pipeline Flow
 
-The Step Function orchestrates the complete ETL pipeline:
+The ETL pipeline runs automatically daily at 3 AM CST/CDT via CloudWatch Events triggering the Step Function:
+
+**Trigger**: CloudWatch Event Rule (`cron(0 8 * * ? *)`) → Step Function
 
 1. **Date Range Generator** → Generates dates to process (next 30 days)
 2. **Extractor** → Extracts event data for each date and stores in S3
