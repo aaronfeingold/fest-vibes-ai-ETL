@@ -1,1 +1,1 @@
-"""Test package for ajf_live_re_wire_ETL."""
+"""Test package for fest-vibes-ai-ETL."""

@@ -218,7 +218,7 @@ poetry run python -m src.date_range_generator.app
 - Lambda Invocation:
 ```
 # build and tag locally
-docker build --target dev -t ajf-live-re-wire:dev .
+docker build --target dev -t fest-vibes-ai-ETL:dev .
 # create new container from latest dev build
 docker run \
   --network host \
@@ -228,7 +228,7 @@ docker run \
   -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
   -e S3_BUCKET_NAME=your-data-bucket-name \
   -e REDIS_URL=rediss://username:password@hostname:port \
-  ajf-live-re-wire:dev
+  fest-vibes-ai-ETL:dev
 ```
 - Note: `rediss` with 2x 's' is not a typo. This indicates ssl, which is the case for the hosted Upstash service.
 #### Redis Configuration for Local Development

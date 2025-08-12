@@ -49,4 +49,4 @@ def setup_logger(
     return logger
 
 
-logger = setup_logger("ajf_live_re_wire")
+logger = setup_logger("fest-vibes-ai-ETL")
