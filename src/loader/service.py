@@ -7,6 +7,16 @@ import time
 from datetime import datetime
 from typing import Dict, List
 
+try:
+    from dateutil.parser import parse as parse_datetime
+except ImportError:
+    # Fallback if dateutil is not available
+    def parse_datetime(date_str):
+        from datetime import datetime
+
+        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+
+
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -429,6 +439,24 @@ class DatabaseService:
             is_indoors = "outdoor" not in venue.name.lower()
             is_streaming = "streaming" in venue.name.lower()
 
+            # Handle datetime conversion - ensure we have proper datetime object
+            performance_time_value = event_data.event_date
+            if isinstance(performance_time_value, str):
+                try:
+                    # Try to parse string date
+                    performance_time_value = parse_datetime(performance_time_value)
+                    # If no timezone info, assume base timezone
+                    if performance_time_value.tzinfo is None:
+                        performance_time_value = base_configs["timezone"].localize(
+                            performance_time_value
+                        )
+                except Exception as parse_error:
+                    logger.error(
+                        f"Failed to parse datetime string '{performance_time_value}': {parse_error}"
+                    )
+                    # Fallback to current time
+                    performance_time_value = datetime.now(base_configs["timezone"])
+
             new_event = Event(
                 wwoz_event_href=event_data.wwoz_event_href,
                 description=event_data.description,
@@ -436,7 +464,7 @@ class DatabaseService:
                 venue_id=venue.id,
                 artist_name=artist.name,
                 venue_name=venue.name,
-                performance_time=event_data.event_date,
+                performance_time=performance_time_value,
                 scrape_time=datetime.now(base_configs["timezone"]),
                 genres=genres,
                 is_indoors=is_indoors,
@@ -467,6 +495,34 @@ class DatabaseService:
 
             # If still no event found, re-raise the exception
             raise
+
+    def _validate_event_data(self, event: EventDTO) -> bool:
+        """
+        Validate event data to prevent type errors and missing required fields.
+
+        Args:
+            event: EventDTO to validate
+
+        Returns:
+            True if valid, False otherwise
+        """
+        try:
+            # Check required fields
+            if not event.artist_data.name or not event.venue_data.name:
+                logger.warning(
+                    f"Missing required fields: artist='{event.artist_data.name}', venue='{event.venue_data.name}'"
+                )
+                return False
+
+            # Check event date is not None and can be converted to datetime
+            if not event.event_data.event_date:
+                logger.warning(f"Missing event_date for {event.artist_data.name}")
+                return False
+
+            return True
+        except Exception as e:
+            logger.error(f"Error validating event data: {e}")
+            return False
 
     async def _ensure_genres_exist(self, events: List[EventDTO]):
         """
@@ -512,18 +568,23 @@ class DatabaseService:
                 return await self._process_event_batch(batch)
             except Exception as e:
                 error_str = str(e).lower()
-                if (
+
+                # Check for retryable errors
+                is_retryable = (
                     "deadlock" in error_str
                     or "lock timeout" in error_str
                     or "concurrent update" in error_str
-                ) and attempt < max_retries - 1:
+                    or "greenlet_spawn" in error_str  # Async context errors
+                    or "rolled back" in error_str  # Session rollback errors
+                )
 
+                if is_retryable and attempt < max_retries - 1:
                     # Exponential backoff with jitter
                     delay = 0.1 * (2**attempt) + (
                         0.05 * attempt
                     )  # 0.1, 0.25, 0.55 seconds
                     logger.warning(
-                        f"Deadlock detected on attempt {attempt + 1}, retrying in {delay:.2f}s..."
+                        f"Retryable error detected on attempt {attempt + 1}, retrying in {delay:.2f}s: {str(e)[:100]}..."
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -549,9 +610,23 @@ class DatabaseService:
         }
         batch_start_time = time.time()
 
+        # Validate all events in batch first
+        valid_events = []
+        for event in batch:
+            if self._validate_event_data(event):
+                valid_events.append(event)
+            else:
+                logger.warning(
+                    f"Skipping invalid event: {event.artist_data.name} at {event.venue_data.name}"
+                )
+
+        if not valid_events:
+            logger.warning("No valid events in batch, skipping")
+            return summary
+
         async with db.session() as session:
             try:
-                for event in batch:
+                for event in valid_events:
                     logger.info(
                         f"Processing: {event.artist_data.name} at {event.venue_data.name}"
                     )
@@ -642,7 +717,12 @@ class DatabaseService:
                 return summary
 
             except Exception as e:
-                await session.rollback()
+                try:
+                    await session.rollback()
+                    logger.error("Session rolled back due to error")
+                except Exception as rollback_error:
+                    logger.error(f"Failed to rollback session: {rollback_error}")
+
                 batch_duration = time.time() - batch_start_time
                 logger.error(f"Batch failed after {batch_duration:.2f}s: {str(e)}")
 
@@ -652,8 +732,12 @@ class DatabaseService:
                     logger.warning(
                         f"Constraint violation in batch processing: {str(e)}"
                     )
-                    # Re-raise to trigger retry logic in the wrapper
+                elif "greenlet_spawn" in error_str:
+                    logger.warning(f"Async context error in batch processing: {str(e)}")
+                elif "datetime" in error_str and "expected" in error_str:
+                    logger.warning(f"Datetime type error in batch processing: {str(e)}")
 
+                # Re-raise to trigger retry logic in the wrapper
                 raise
 
     async def save_events(self, events: List[EventDTO]) -> Dict[str, int]:
