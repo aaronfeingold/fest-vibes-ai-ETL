@@ -134,6 +134,9 @@ resource "aws_sfn_state_machine" "etl_pipeline" {
               Type = "Task"
               Resource = aws_lambda_function.cache_manager.arn
               Parameters = {
+                queryStringParameters = {
+                  "date.$" = "$.date"
+                }
                 "date.$" = "$.date"
                 "extractorData.$" = "$.state.extractorResult"
                 "loaderData.$" = "$.state.loaderResult"
