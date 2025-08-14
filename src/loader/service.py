@@ -82,6 +82,180 @@ class DatabaseService:
             event.description_embedding = None
             event.event_text_embedding = None
 
+    async def generate_embeddings_for_artist(self, artist: Artist) -> None:
+        """
+        Generate text embeddings for an artist.
+
+        Creates comprehensive text representation including name, description,
+        website, and genre associations for semantic search.
+
+        Args:
+            artist: Artist object to generate embeddings for
+        """
+        try:
+            # Build comprehensive text representation
+            text_parts = [artist.name or ""]
+
+            if artist.description:
+                text_parts.append(artist.description)
+
+            if artist.website:
+                text_parts.append(f"Website: {artist.website}")
+
+            # Add genre associations if available
+            if hasattr(artist, "genres") and artist.genres:
+                genre_names = [genre.name for genre in artist.genres if genre.name]
+                if genre_names:
+                    text_parts.append(f"Genres: {', '.join(genre_names)}")
+
+            # Create combined text
+            combined_text = " ".join(text_parts).strip()
+
+            # Generate embedding
+            if combined_text:
+                artist.description_embedding = self.embedding_model.encode(
+                    combined_text
+                )
+                logger.debug(f"Generated embedding for artist: {artist.name}")
+            else:
+                artist.description_embedding = None
+                logger.warning(f"No text available for artist embedding: {artist.name}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to generate embedding for artist {artist.name}: {str(e)}"
+            )
+            artist.description_embedding = None
+
+    async def generate_embeddings_for_venue(self, venue: Venue) -> None:
+        """
+        Generate text embeddings for a venue.
+
+        Creates rich contextual text including name, address, description,
+        characteristics (indoor/outdoor, capacity, streaming), and genre associations.
+
+        Args:
+            venue: Venue object to generate embeddings for
+        """
+        try:
+            # Build rich venue context
+            text_parts = [venue.name or ""]
+
+            # Add address information
+            if venue.full_address:
+                text_parts.append(f"Address: {venue.full_address}")
+            elif venue.thoroughfare and venue.locality and venue.state:
+                address = f"{venue.thoroughfare}, {venue.locality}, {venue.state}"
+                if venue.postal_code:
+                    address += f" {venue.postal_code}"
+                text_parts.append(f"Address: {address}")
+
+            # Add description
+            if venue.description:
+                text_parts.append(venue.description)
+
+            # Add venue characteristics
+            characteristics = []
+            if hasattr(venue, "is_indoors"):
+                characteristics.append(
+                    "indoor venue" if venue.is_indoors else "outdoor venue"
+                )
+            if hasattr(venue, "capacity") and venue.capacity:
+                if venue.capacity < 100:
+                    characteristics.append("intimate venue")
+                elif venue.capacity < 500:
+                    characteristics.append("medium-sized venue")
+                else:
+                    characteristics.append("large venue")
+            if hasattr(venue, "is_streaming") and venue.is_streaming:
+                characteristics.append("streaming venue")
+
+            if characteristics:
+                text_parts.append(f"Characteristics: {', '.join(characteristics)}")
+
+            # Add genre associations if available
+            if hasattr(venue, "genres") and venue.genres:
+                genre_names = [genre.name for genre in venue.genres if genre.name]
+                if genre_names:
+                    text_parts.append(f"Genres: {', '.join(genre_names)}")
+
+            # Create combined text
+            combined_text = " ".join(text_parts).strip()
+
+            # Generate embedding
+            if combined_text:
+                venue.venue_info_embedding = self.embedding_model.encode(combined_text)
+                logger.debug(f"Generated embedding for venue: {venue.name}")
+            else:
+                venue.venue_info_embedding = None
+                logger.warning(f"No text available for venue embedding: {venue.name}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to generate embedding for venue {venue.name}: {str(e)}"
+            )
+            venue.venue_info_embedding = None
+
+    async def generate_embeddings_for_genre(self, genre: Genre) -> None:
+        """
+        Generate text embeddings for a genre.
+
+        Creates text representation from name and description with fallback
+        text generation for common genres.
+
+        Args:
+            genre: Genre object to generate embeddings for
+        """
+        try:
+            # Build genre context
+            text_parts = []
+
+            if genre.name:
+                text_parts.append(f"Genre: {genre.name}")
+
+            if genre.description:
+                text_parts.append(genre.description)
+            else:
+                # Provide fallback descriptions for common New Orleans genres
+                fallback_descriptions = {
+                    "jazz": "A musical style that originated in New Orleans",
+                    "blues": "A music genre characterized by twelve-bar blues structure",
+                    "funk": "A rhythmic music genre that originated in New Orleans",
+                    "r&b": "Rhythm and blues music style",
+                    "gospel": "Christian music with roots in African American traditions",
+                    "zydeco": "A Louisiana Creole music genre",
+                    "cajun": "Traditional music of the Cajun people of Louisiana",
+                    "brass band": "Traditional New Orleans brass band music",
+                    "second line": "A New Orleans parade music tradition",
+                    "bounce": "A New Orleans hip hop subgenre",
+                }
+
+                genre_lower = genre.name.lower()
+                for key, description in fallback_descriptions.items():
+                    if key in genre_lower:
+                        text_parts.append(description)
+                        break
+                else:
+                    # Generic fallback
+                    text_parts.append("A music genre")
+
+            # Create combined text
+            combined_text = " ".join(text_parts).strip()
+
+            # Generate embedding
+            if combined_text:
+                genre.genre_embedding = self.embedding_model.encode(combined_text)
+                logger.debug(f"Generated embedding for genre: {genre.name}")
+            else:
+                genre.genre_embedding = None
+                logger.warning(f"No text available for genre embedding: {genre.name}")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to generate embedding for genre {genre.name}: {str(e)}"
+            )
+            genre.genre_embedding = None
+
     async def get_or_create_genre(self, session: AsyncSession, name: str) -> Genre:
         """
         Get or create a genre using PostgreSQL's ON CONFLICT for thread safety.
@@ -115,11 +289,18 @@ class DatabaseService:
             if genre_row:
                 # Genre was just created, fetch it to get proper SQLAlchemy object
                 result = await session.execute(select(Genre).filter_by(id=genre_row.id))
-                return result.scalar_one()
+                genre = result.scalar_one()
+                # Generate embeddings for newly created genre
+                await self.generate_embeddings_for_genre(genre)
+                return genre
             else:
                 # Genre already existed, fetch it normally
                 result = await session.execute(select(Genre).filter_by(name=name))
-                return result.scalar_one()
+                genre = result.scalar_one()
+                # Generate embeddings if not present (conditional embedding generation)
+                if not genre.genre_embedding:
+                    await self.generate_embeddings_for_genre(genre)
+                return genre
 
         except Exception as e:
             logger.warning(f"Error in upsert for genre '{name}': {e}")
@@ -132,6 +313,12 @@ class DatabaseService:
                 genre = Genre(name=name)
                 session.add(genre)
                 await session.flush()
+                # Generate embeddings for fallback created genre
+                await self.generate_embeddings_for_genre(genre)
+            else:
+                # Genre exists but may need embeddings
+                if not genre.genre_embedding:
+                    await self.generate_embeddings_for_genre(genre)
             return genre
 
     async def upsert_artist(
@@ -185,6 +372,9 @@ class DatabaseService:
                 if genre_objects:
                     await self._associate_artist_genres(session, artist, genre_objects)
 
+                # Generate embeddings for the artist
+                await self.generate_embeddings_for_artist(artist)
+
                 return artist
             else:
                 # Should not happen with RETURNING clause, but fallback
@@ -194,6 +384,9 @@ class DatabaseService:
                 artist = result.scalar_one()
                 if genre_objects:
                     await self._associate_artist_genres(session, artist, genre_objects)
+                # Generate embeddings if not present (conditional embedding generation)
+                if not artist.description_embedding:
+                    await self.generate_embeddings_for_artist(artist)
                 return artist
 
         except Exception as e:
@@ -218,8 +411,14 @@ class DatabaseService:
                 await session.flush()
                 if genre_objects:
                     await self._associate_artist_genres(session, artist, genre_objects)
+                # Generate embeddings for fallback created artist
+                await self.generate_embeddings_for_artist(artist)
             elif genre_objects:
                 await self._associate_artist_genres(session, artist, genre_objects)
+            else:
+                # Artist exists but may need embeddings
+                if not artist.description_embedding:
+                    await self.generate_embeddings_for_artist(artist)
             return artist
 
     async def _associate_artist_genres(
@@ -358,6 +557,10 @@ class DatabaseService:
                         session, existing_venue, genre_objects
                     )
 
+                # Generate embeddings if not present (conditional embedding generation)
+                if not existing_venue.venue_info_embedding:
+                    await self.generate_embeddings_for_venue(existing_venue)
+
                 return existing_venue
 
             # Venue doesn't exist, create with geocoding
@@ -430,6 +633,9 @@ class DatabaseService:
                 if genre_objects:
                     await self._associate_venue_genres(session, venue, genre_objects)
 
+                # Generate embeddings for the venue
+                await self.generate_embeddings_for_venue(venue)
+
                 return venue
             else:
                 # Race condition - venue was created by another process
@@ -441,6 +647,9 @@ class DatabaseService:
                 venue = result.scalar_one()
                 if genre_objects:
                     await self._associate_venue_genres(session, venue, genre_objects)
+                # Generate embeddings if not present (conditional embedding generation)
+                if not venue.venue_info_embedding:
+                    await self.generate_embeddings_for_venue(venue)
                 return venue
 
         except Exception as e:
@@ -480,8 +689,14 @@ class DatabaseService:
                 )
                 session.add(venue)
                 await session.flush()
+                # Generate embeddings for fallback created venue
+                await self.generate_embeddings_for_venue(venue)
             elif genre_objects:
                 venue.genres = genre_objects
+            else:
+                # Venue exists but may need embeddings
+                if not venue.venue_info_embedding:
+                    await self.generate_embeddings_for_venue(venue)
             return venue
 
     async def upsert_event(

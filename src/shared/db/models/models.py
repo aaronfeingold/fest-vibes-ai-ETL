@@ -54,6 +54,8 @@ class Venue(Base):
         is_indoors (bool): Indicates if the venue is an indoor venue. Defaults to True.
         last_updated (datetime): Timestamp of the last update to the venue record.
         last_geocoded (datetime): Timestamp of the last geocoding operation for the venue.
+        description (str): Description of the venue.
+        venue_info_embedding (Vector): Vector embedding for semantic search.
 
     Relationships:
         genres (list[Genre]): List of genres associated with the venue.
@@ -89,6 +91,7 @@ class Venue(Base):
         DateTime(timezone=True)
     )  # Track when we last geocoded this venue
     description = Column(Text)
+    venue_info_embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     genres = relationship("Genre", secondary=VENUE_GENRE_TABLE, back_populates="venues")
     events = relationship("Event", back_populates="venue")
@@ -122,6 +125,8 @@ class Artist(Base):
         description (str): A description of the artist.
         popularity_score (float): The popularity score of the artist.
         typical_set_length (Interval): The typical set length of the artist.
+        website (str): The artist's official website.
+        description_embedding (Vector): Vector embedding for semantic search.
 
     Relationships:
         events (list[Event]): A list of events associated with the artist.
@@ -144,6 +149,7 @@ class Artist(Base):
     popularity_score = Column(Float)
     typical_set_length = Column(Interval)
     website = Column(String(255))
+    description_embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     events = relationship("Event", back_populates="artist")
     venues = relationship(
@@ -243,6 +249,8 @@ class Genre(Base):
     Attributes:
         id (int): The unique identifier for the genre.
         name (str): The name of the genre. Must be unique and cannot be null.
+        description (str): Description of the genre.
+        genre_embedding (Vector): Vector embedding for semantic search.
         venues (list[Venue]): A list of venues associated with this genre
           through the "venue_genres" association table.
         artists (list[Artist]): A list of artists associated with this
@@ -256,6 +264,7 @@ class Genre(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
+    genre_embedding = Column(Vector(384))  # Vector embedding for semantic search
 
     # Fixed relationships
     venues = relationship("Venue", secondary=VENUE_GENRE_TABLE, back_populates="genres")
