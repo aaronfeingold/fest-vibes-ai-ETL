@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from loader.service import DatabaseService
+from shared.db.models import Artist, Genre, Venue
 from shared.schemas.dto import ArtistData, EventData, EventDTO, VenueData
 
 
@@ -322,6 +323,206 @@ class TestIndexCreation:
         source = inspect.getsource(Database.create_tables)
 
         assert "create_concurrency_indexes" in source
+
+
+class TestVectorEmbeddings:
+    """Test the vector embeddings functionality for semantic search."""
+
+    @pytest.fixture
+    def mock_db_service(self):
+        """Create a mock database service for testing embeddings."""
+        service = DatabaseService()
+        # Mock the embedding model to avoid loading it in tests
+        service.embedding_model = Mock()
+        service.embedding_model.encode.return_value = [
+            0.1,
+            0.2,
+            0.3,
+        ] * 128  # 384 dimensions
+        return service
+
+    @pytest.fixture
+    def sample_artist(self):
+        """Create a sample Artist for testing."""
+        return Artist(
+            id=1,
+            name="Test Artist A",
+            description="A jazz musician from New Orleans",
+            website="http://testartist.com",
+            genres=[Genre(name="Jazz"), Genre(name="Blues")],
+        )
+
+    @pytest.fixture
+    def sample_venue(self):
+        """Create a sample Venue for testing."""
+        return Venue(
+            id=1,
+            name="Test Venue",
+            full_address="123 Test St, New Orleans, LA 70115",
+            description="Historic jazz club",
+            is_indoors=True,
+            capacity=150,
+            is_streaming=False,
+            genres=[Genre(name="Jazz")],
+        )
+
+    @pytest.fixture
+    def sample_genre(self):
+        """Create a sample Genre for testing."""
+        return Genre(
+            id=1,
+            name="Jazz",
+            description="A musical style that originated in New Orleans",
+        )
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_for_artist(self, mock_db_service, sample_artist):
+        """Test artist embedding generation with comprehensive text composition."""
+        # Test the method
+        await mock_db_service.generate_embeddings_for_artist(sample_artist)
+
+        # Verify embedding model was called
+        assert mock_db_service.embedding_model.encode.called
+
+        # Verify the text composition includes all expected elements
+        call_args = mock_db_service.embedding_model.encode.call_args[0][0]
+        assert "Test Artist A" in call_args
+        assert "jazz musician from New Orleans" in call_args
+        assert "Website: http://testartist.com" in call_args
+        assert "Genres: Jazz, Blues" in call_args
+
+        # Verify embedding was set on the artist
+        assert sample_artist.description_embedding is not None
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_for_venue(self, mock_db_service, sample_venue):
+        """Test venue embedding generation with rich contextual information."""
+        await mock_db_service.generate_embeddings_for_venue(sample_venue)
+
+        # Verify embedding model was called
+        assert mock_db_service.embedding_model.encode.called
+
+        # Verify the text composition includes all expected elements
+        call_args = mock_db_service.embedding_model.encode.call_args[0][0]
+        assert "Test Venue" in call_args
+        assert "Address: 123 Test St, New Orleans, LA 70115" in call_args
+        assert "Historic jazz club" in call_args
+        assert "indoor venue" in call_args
+        assert "medium-sized venue" in call_args  # capacity 150 = medium
+        assert "Genres: Jazz" in call_args
+
+        # Verify embedding was set on the venue
+        assert sample_venue.venue_info_embedding is not None
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_for_genre(self, mock_db_service, sample_genre):
+        """Test genre embedding generation with fallback text generation."""
+        await mock_db_service.generate_embeddings_for_genre(sample_genre)
+
+        # Verify embedding model was called
+        assert mock_db_service.embedding_model.encode.called
+
+        # Verify the text composition includes expected elements
+        call_args = mock_db_service.embedding_model.encode.call_args[0][0]
+        assert "Genre: Jazz" in call_args
+        assert "musical style that originated in New Orleans" in call_args
+
+        # Verify embedding was set on the genre
+        assert sample_genre.genre_embedding is not None
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_for_genre_with_fallback(self, mock_db_service):
+        """Test genre embedding generation with fallback descriptions."""
+        # Create a genre without description to test fallback
+        genre = Genre(id=1, name="Zydeco", description=None)
+
+        await mock_db_service.generate_embeddings_for_genre(genre)
+
+        # Verify embedding model was called with fallback description
+        call_args = mock_db_service.embedding_model.encode.call_args[0][0]
+        assert "Genre: Zydeco" in call_args
+        assert "Louisiana Creole music genre" in call_args  # Fallback description
+
+        # Verify embedding was set
+        assert genre.genre_embedding is not None
+
+    @pytest.mark.asyncio
+    async def test_embedding_generation_error_handling(
+        self, mock_db_service, sample_artist
+    ):
+        """Test that embedding generation errors are handled gracefully."""
+        # Mock the encoder to raise an exception
+        mock_db_service.embedding_model.encode.side_effect = Exception(
+            "Encoding failed"
+        )
+
+        # Should not raise an exception
+        await mock_db_service.generate_embeddings_for_artist(sample_artist)
+
+        # Embedding should be None as fallback
+        assert sample_artist.description_embedding is None
+
+    @pytest.mark.asyncio
+    async def test_empty_text_handling(self, mock_db_service):
+        """Test handling of entities with no available text."""
+        # Create an artist with no text content
+        artist = Artist(id=1, name=None, description=None, website=None)
+
+        await mock_db_service.generate_embeddings_for_artist(artist)
+
+        # Should set embedding to None when no text available
+        assert artist.description_embedding is None
+
+    def test_embedding_methods_exist(self, mock_db_service):
+        """Test that all required embedding generation methods exist."""
+        assert hasattr(mock_db_service, "generate_embeddings_for_artist")
+        assert hasattr(mock_db_service, "generate_embeddings_for_venue")
+        assert hasattr(mock_db_service, "generate_embeddings_for_genre")
+        assert hasattr(
+            mock_db_service, "generate_embeddings_for_event"
+        )  # Already existed
+
+        # Verify they are all async methods
+        import inspect
+
+        assert inspect.iscoroutinefunction(
+            mock_db_service.generate_embeddings_for_artist
+        )
+        assert inspect.iscoroutinefunction(
+            mock_db_service.generate_embeddings_for_venue
+        )
+        assert inspect.iscoroutinefunction(
+            mock_db_service.generate_embeddings_for_genre
+        )
+        assert inspect.iscoroutinefunction(
+            mock_db_service.generate_embeddings_for_event
+        )
+
+    def test_vector_indexes_in_migration_and_database(self):
+        """Test that vector indexes are included in both migration and database creation."""
+        # Check migration file contains vector indexes
+        migration_path = "/home/aaronfeingold/Code/ajf/fest-vibes-ai/fest-vibes-ai-ETL/src/shared/db/migrations/add_vector_embeddings_to_core_tables.sql"
+        try:
+            with open(migration_path, "r") as f:
+                migration_content = f.read()
+
+            assert "idx_artists_description_embedding" in migration_content
+            assert "idx_venues_info_embedding" in migration_content
+            assert "idx_genres_embedding" in migration_content
+            assert "vector_cosine_ops" in migration_content
+            assert "USING hnsw" in migration_content
+        except FileNotFoundError:
+            pytest.skip("Migration file not found")
+
+        # Check database service includes vector indexes
+        import inspect
+
+        from shared.db.database import Database
+
+        source = inspect.getsource(Database.create_concurrency_indexes)
+        assert "idx_artists_description_embedding" in source
+        assert "idx_venues_info_embedding" in source
+        assert "idx_genres_embedding" in source
 
 
 if __name__ == "__main__":
