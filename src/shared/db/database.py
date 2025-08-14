@@ -198,6 +198,17 @@ class Database:
                 "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venue_genres_genre_id ON venue_genres(genre_id);"
             )
 
+            # Vector embedding indexes for semantic search
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_artists_description_embedding ON artists USING hnsw (description_embedding vector_cosine_ops);"
+            )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_venues_info_embedding ON venues USING hnsw (venue_info_embedding vector_cosine_ops);"
+            )
+            await create_index_safe(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_genres_embedding ON genres USING hnsw (genre_embedding vector_cosine_ops);"
+            )
+
             logger.info("Concurrency optimization indexes created successfully")
 
         except Exception as e:
