@@ -1,0 +1,137 @@
+flowchart TD
+    subgraph "Architecture Comparison: Event-Driven vs Step Functions"
+
+        subgraph left ["Event-Driven Architecture (Original Design)"]
+            direction TB
+
+            subgraph "CI/CD Process - Original"
+                gh1[GitHub Repository] --> |Push to main| actions1[GitHub Actions]
+                actions1 --> build_scraper1[Build Scraper Container]
+                actions1 --> build_loader1[Build Loader Container]
+                actions1 --> build_cache1[Build Cache Manager Container]
+                actions1 --> build_date1[Build Date Generator Container]
+
+                build_scraper1 --> push_ecr11[Push to ECR]
+                build_loader1 --> push_ecr21[Push to ECR]
+                build_cache1 --> push_ecr31[Push to ECR]
+                build_date1 --> push_ecr41[Push to ECR]
+
+                push_ecr11 --> |Update Lambda| deploy1[Deploy Infrastructure]
+                push_ecr21 --> |Update Lambda| deploy1
+                push_ecr31 --> |Update Lambda| deploy1
+                push_ecr41 --> |Update Lambda| deploy1
+
+                deploy1 --> |Terraform Apply| infra1[AWS Infrastructure]
+            end
+
+            subgraph "Event-Driven ETL Flow"
+                cw1[CloudWatch Event] --> |Daily Trigger| date_gen1[Date Range Generator]
+                date_gen1 --> |Generate dates| scraper1[Scraper Lambda]
+                scraper1 --> |Store data| s31[(S3 Bucket)]
+                s31 --> |S3 Notification| sns1[SNS Topic]
+                sns1 --> |Fan out| sqs1[SQS Queue]
+                sqs1 --> |Pull message| loader1[Loader Lambda]
+                loader1 --> |Process & store| pg1[(PostgreSQL)]
+                loader1 --> |Publish completion| result_sns1[Results SNS]
+                result_sns1 --> |Trigger| cache1[Cache Manager]
+                cache1 --> |Update cache| redis1[(Redis Cache)]
+            end
+
+            subgraph "Observability - Event-Driven"
+                sqs1 --> |DLQ| dlq1[Dead Letter Queue]
+                sns1 --> |CloudWatch Metrics| metrics1[Message Metrics]
+                loader1 --> |Retry Logic| retry1[Built-in Retries]
+            end
+        end
+
+        subgraph right ["Step Function Orchestration (Current Implementation)"]
+            direction TB
+
+            subgraph "CI/CD Process - Current"
+                gh2[GitHub Repository] --> |Push to main| actions2[GitHub Actions]
+                actions2 --> test2[Run Tests]
+                test2 --> build_matrix[Build Matrix Strategy]
+                build_matrix --> build_ext[Build Extractor]
+                build_matrix --> build_load[Build Loader]
+                build_matrix --> build_cache[Build Cache Manager]
+                build_matrix --> build_param[Build Param Generator]
+
+                build_ext --> ecr2[Push to ECR]
+                build_load --> ecr2
+                build_cache --> ecr2
+                build_param --> ecr2
+
+                ecr2 --> |Terraform Apply| deploy2[Deploy Infrastructure]
+                deploy2 --> |Create/Update| infra2[AWS Infrastructure]
+            end
+
+            subgraph "Step Function ETL Flow"
+                cw2[CloudWatch Event] --> |"cron(0 8 * * ? *)"| sf[Step Function]
+                sf --> |Invoke| date_gen2[Date Range Generator]
+                date_gen2 --> |Return dates array| map_state[Map State - Max Concurrency: 5]
+                map_state --> |For each date| extractor2[Extractor Lambda]
+                extractor2 --> |Store in S3| s32[(S3 Bucket)]
+                extractor2 --> |Pass S3 key| loader2[Loader Lambda]
+                loader2 --> |Write to DB| pg2[(PostgreSQL)]
+                loader2 --> |Success| cache2[Cache Manager Lambda]
+                cache2 --> |Update cache| redis2[(Redis Cache)]
+            end
+
+            subgraph "Step Function Features"
+                sf --> |Built-in Retry| retry2[Lambda Retry Logic]
+                sf --> |Error Handling| error_handling[Choice States]
+                sf --> |Status Tracking| sf_console[Step Function Console]
+                map_state --> |Tolerated Failure: 10%| fault_tolerance[Fault Tolerance]
+            end
+        end
+    end
+
+    subgraph "Trade-offs Analysis"
+        direction LR
+
+        subgraph "Event-Driven Benefits"
+            eb1[High Observability]
+            eb2[Loose Coupling]
+            eb3[Built-in Retry/DLQ]
+            eb4[Horizontal Scaling]
+        end
+
+        subgraph "Event-Driven Costs"
+            ec1[SNS Message Costs]
+            ec2[SQS Polling Costs]
+            ec3[Additional Infrastructure]
+            ec4[Complex Debugging]
+        end
+
+        subgraph "Step Function Benefits"
+            sb1[Visual Workflow]
+            sb2[Centralized Orchestration]
+            sb3[Lower Message Costs]
+            sb4[Built-in Error Handling]
+        end
+
+        subgraph "Step Function Costs"
+            sc1[State Transition Costs]
+            sc2[Reduced Observability]
+            sc3[Tight Coupling]
+            sc4[Complex Parallel Processing]
+        end
+    end
+
+    classDef aws fill:#FF9900,stroke:#232F3E,color:white;
+    classDef lambda fill:#FF9900,stroke:#232F3E,color:white;
+    classDef storage fill:#3B48CC,stroke:#232F3E,color:white;
+    classDef cache fill:#FF3333,stroke:#232F3E,color:white;
+    classDef messaging fill:#CC2A6B,stroke:#232F3E,color:white;
+    classDef stepfunctions fill:#CC771C,stroke:#232F3E,color:white;
+    classDef benefits fill:#4CAF50,stroke:#2E7D32,color:white;
+    classDef costs fill:#F44336,stroke:#C62828,color:white;
+
+    class s31,s32,pg1,pg2 storage;
+    class redis1,redis2 cache;
+    class date_gen1,date_gen2,scraper1,extractor2,loader1,loader2,cache1,cache2 lambda;
+    class sns1,sqs1,result_sns1,dlq1 messaging;
+    class sf,map_state,sf_console stepfunctions;
+    class infra1,infra2,cw1,cw2 aws;
+    class eb1,eb2,eb3,eb4,sb1,sb2,sb3,sb4 benefits;
+    class ec1,ec2,ec3,ec4,sc1,sc2,sc3,sc4 costs;

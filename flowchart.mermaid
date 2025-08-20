@@ -1,0 +1,65 @@
+flowchart TD
+    subgraph "CI/CD Process"
+        gh[GitHub Repository] --> |Push to main| actions[GitHub Actions]
+        actions --> build_scraper[Build Scraper Container]
+        actions --> build_loader[Build Loader Container]
+        actions --> build_cache[Build Cache Manager Container]
+        actions --> build_date[Build Date Generator Container]
+
+        build_scraper --> push_ecr1[Push to ECR]
+        build_loader --> push_ecr2[Push to ECR]
+        build_cache --> push_ecr3[Push to ECR]
+        build_date --> push_ecr4[Push to ECR]
+
+        push_ecr1 --> |Update Lambda| deploy
+        push_ecr2 --> |Update Lambda| deploy
+        push_ecr3 --> |Update Lambda| deploy
+        push_ecr4 --> |Update Lambda| deploy
+
+        deploy[Deploy Infrastructure] --> |Terraform Apply| infra[AWS Infrastructure]
+    end
+
+    subgraph "Step Function Workflow"
+        date_gen[Date Range Generator Lambda] --> |Generate 30-day range| sf_map[Step Function Map State]
+        sf_map --> |For each date| scraper_task[Scraper Lambda]
+        scraper_task --> |Store in S3| s3[(S3 Bucket)]
+        scraper_task --> |Pass S3 URL| loader_task[Loader Lambda]
+        loader_task --> |Write to| pg[(PostgreSQL Database)]
+        loader_task --> |Trigger| cache_task[Cache Manager Lambda]
+        cache_task --> |Store in| redis[(Redis Cache)]
+    end
+
+    subgraph "Event-Driven Flow"
+        s3 --> |S3 Notification| sns[SNS Topic]
+        sns --> sqs[SQS Queue]
+        sqs --> |Pull Message| loader_event[Loader Lambda]
+        loader_event --> |Write to| pg
+        loader_event --> |Publish to| result_topic[Results SNS Topic]
+        result_topic --> |Trigger| cache_event[Cache Manager Lambda]
+        cache_event --> |Store in| redis
+    end
+
+    subgraph "Frontend Access"
+        app[Web Application] --> |API Request| api[API Gateway]
+        api --> |Check Cache| check_cache{In Cache?}
+        check_cache --> |Yes| redis
+        check_cache --> |No| pg
+        redis --> |Return Data| app
+        pg --> |Return Data & Update Cache| redis
+    end
+
+    infra --> date_gen
+
+    classDef aws fill:#FF9900,stroke:#232F3E,color:white;
+    classDef lambda fill:#FF9900,stroke:#232F3E,color:white;
+    classDef storage fill:#3B48CC,stroke:#232F3E,color:white;
+    classDef cache fill:#FF3333,stroke:#232F3E,color:white;
+    classDef messaging fill:#CC2A6B,stroke:#232F3E,color:white;
+    classDef stepfunctions fill:#CC771C,stroke:#232F3E,color:white;
+
+    class s3,pg storage;
+    class redis cache;
+    class date_gen,scraper_task,loader_task,loader_event,cache_task,cache_event lambda;
+    class sns,sqs,result_topic messaging;
+    class sf_map stepfunctions;
+    class infra,api aws;
