@@ -30,7 +30,6 @@ The project is built with a microservices architecture based on AWS Lambda funct
 - PostgreSQL
 - Docker
 - Redis instance
-- Poetry for dependency management
 
 ## Installation
 
@@ -229,10 +228,10 @@ pipenv run pytest tests/ --cov=src --cov-report=html
 ### Test Run
 
 ```sh
-poetry run python -m src.scraper.app
-poetry run python -m src.loader.app
-poetry run python -m src.cache_manager.app
-poetry run python -m src.date_range_generator.app
+pipenv run python -m src.scraper.app
+pipenv run python -m src.loader.app
+pipenv run python -m src.cache_manager.app
+pipenv run python -m src.date_range_generator.app
 ```
 
 ### Python Debugger
@@ -387,18 +386,6 @@ aws s3api put-public-access-block \
   --bucket <tf-state-bucket-name> \
   --public-access-block-configuration \
   BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
-```
-
-**DynamoDB Table for State Locking:**
-
-```bash
-# Create the DynamoDB table for Terraform state locking
-aws dynamodb create-table \
-  --table-name <tf-state-bucket-name>-terraform-locks \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
 ```
 
 #### 2. GitHub Secrets Setup
