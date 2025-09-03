@@ -23,6 +23,7 @@ class BaseConfig(TypedDict):
         base_url: Base URL for the application
         default_endpoint: Default API endpoint path
         default_headers: Default HTTP headers for requests
+        embedding_model: Name of the SentenceTransformer model to use for embeddings
     """
 
     timezone: pytz.BaseTzInfo
@@ -30,6 +31,7 @@ class BaseConfig(TypedDict):
     date_format: str
     base_url: str
     default_endpoint: str
+    embedding_model: str
     default_headers: Dict[str, str]
 
 
@@ -42,6 +44,7 @@ base_configs: BaseConfig = {
     "date_format": "%Y-%m-%d",
     "base_url": os.getenv("BASE_URL", "https://www.wwoz.org"),
     "default_endpoint": "/calendar/livewire-music",
+    "embedding_model": os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
     "default_headers": {
         "User-Agent": os.getenv(
             "USER_AGENT",
