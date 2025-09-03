@@ -39,10 +39,11 @@ class DatabaseService:
     def __init__(self):
         """Initialize the database loader."""
         try:
-            # Initialize SentenceTransformer with better error handling
+            # Initialize SentenceTransformer with configurable model
             # Model should be pre-cached in container or will use /tmp cache
-            self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-            logger.info("Successfully loaded SentenceTransformer model")
+            model_name = base_configs["embedding_model"]
+            self.embedding_model = SentenceTransformer(model_name)
+            logger.info(f"Successfully loaded SentenceTransformer model: {model_name}")
         except Exception as e:
             logger.error(f"Failed to load SentenceTransformer model: {str(e)}")
             raise DatabaseError(
