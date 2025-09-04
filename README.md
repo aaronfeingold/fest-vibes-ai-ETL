@@ -26,7 +26,7 @@ The project is built with a microservices architecture based on AWS Lambda funct
 - PostgreSQL
 - Docker
 - Redis instance
-- Poetry for dependency management
+- Pipenv for dependency management
 
 ## Installation
 
@@ -199,10 +199,10 @@ pipenv run pytest tests/ --cov=src --cov-report=html
 
 ### Test Run
 ```sh
-poetry run python -m src.scraper.app
-poetry run python -m src.loader.app
-poetry run python -m src.cache_manager.app
-poetry run python -m src.date_range_generator.app
+pipenv run python -m src.scraper.app
+pipenv run python -m src.loader.app
+pipenv run python -m src.cache_manager.app
+pipenv run python -m src.date_range_generator.app
 ```
 
 ### Python Debugger
