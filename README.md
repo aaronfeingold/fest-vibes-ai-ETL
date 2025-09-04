@@ -214,12 +214,27 @@ pipenv run python -m src.date_range_generator.app
 
 **Run Python: Pipenv Debug with VSCode's Debugger tool**
 
-### Docker Image
-- Lambda Invocation:
+### Docker Images
+Each microservice has its own Dockerfile for independent building and deployment:
+
+**Build individual services:**
+```bash
+# Build extractor service
+docker build -f src/extractor/Dockerfile -t fest-vibes-ai-extractor .
+
+# Build loader service
+docker build -f src/loader/Dockerfile -t fest-vibes-ai-loader .
+
+# Build cache manager service
+docker build -f src/cache_manager/Dockerfile -t fest-vibes-ai-cache-manager .
+
+# Build parameter generator service
+docker build -f src/param_generator/Dockerfile -t fest-vibes-ai-param-generator .
 ```
-# build and tag locally
-docker build --target dev -t fest-vibes-ai-ETL:dev .
-# create new container from latest dev build
+
+**Run a specific service:**
+```bash
+# Example: Run the extractor service
 docker run \
   --network host \
   -v ~/.aws:/root/.aws \
@@ -228,7 +243,7 @@ docker run \
   -e GOOGLE_MAPS_API_KEY=a_super_secret_thing \
   -e S3_BUCKET_NAME=your-data-bucket-name \
   -e REDIS_URL=rediss://username:password@hostname:port \
-  fest-vibes-ai-ETL:dev
+  fest-vibes-ai-extractor
 ```
 - Note: `rediss` with 2x 's' is not a typo. This indicates ssl, which is the case for the hosted Upstash service.
 #### Redis Configuration for Local Development
