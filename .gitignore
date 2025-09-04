@@ -222,3 +222,4 @@ secrets/
 .mypy_cache/
 terraform/environments/prod/terraform.tfvars
 plans/
+AI-Product-Development-Toolkit/
