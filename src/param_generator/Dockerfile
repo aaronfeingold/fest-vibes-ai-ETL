@@ -2,11 +2,9 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install pipenv and dependencies
-RUN pip install pipenv
-COPY Pipfile Pipfile.lock ./
-# Install dependencies only (no dev dependencies)
-RUN pipenv install --deploy --system
+# Install component-specific dependencies
+COPY src/param_generator/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy shared library and application code
 COPY src/shared /app/shared
