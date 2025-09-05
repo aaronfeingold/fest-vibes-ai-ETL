@@ -224,7 +224,7 @@ class Event(Base):
     is_indoors = Column(Boolean, default=True)  # Default to indoors
     is_streaming = Column(Boolean, default=False)
     # Add vector embedding columns
-    description_embedding = Column(Vector(384))  # Using all-MiniLM-L6-v2 model
+    description_embedding = Column(Vector(384))
     embedding = Column(Vector(384))  # Combined text for semantic search
 
     artist = relationship("Artist", back_populates="events")
