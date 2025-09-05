@@ -70,8 +70,8 @@ pip install pipenv
 
 ### Clone the Repository
 ```sh
-git clone https://github.com/aaronfeingold/ajf-live-re-wire.git
-cd ajf-live-re-wire
+git clone https://github.com/aaronfeingold/fest-vibes-ai-etl.git
+cd fest-vibes-ai-etl
 ```
 
 ## Usage
