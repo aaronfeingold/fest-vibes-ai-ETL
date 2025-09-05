@@ -146,7 +146,7 @@ To test your Lambda functions locally using Docker images, use these commands:
 ### Environment Variables Setup
 
 **Option 1: Create a `.env` file (recommended)**
-Create a `test.env` file in your project root:
+A template: `test.env` file is in your project root:
 
 ```bash
 # test.env
@@ -170,7 +170,7 @@ export AWS_LAMBDA_RUNTIME_API=localhost
 
 ```bash
 docker run --rm --env-file .env \
-  param_generator-test \
+  param-generator-test \
   python -c "
 import json
 from app import lambda_handler
@@ -213,7 +213,7 @@ print(json.dumps(result, indent=2))
 
 # Create test.env file with your variables, then:
 docker run --rm --env-file .env \
-  loader-test\
+  loader-test \
   python -c "
 import json
 import os
@@ -231,19 +231,7 @@ print(json.dumps(result, indent=2))
 ```bash
 # Using .env file
 docker run --rm --env-file test.env \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-cache_manager:latest \
-  python -c "
-import json
-from load.app import lambda_handler
-import asyncio
-event = {'date': '2025-01-30'}
-result = asyncio.run(lambda_handler(event, None))
-print(json.dumps(result, indent=2))
-"
-
-# Using manual environment variables
-docker run --rm -e AWS_LAMBDA_RUNTIME_API=localhost \
-  937355130135.dkr.ecr.us-east-1.amazonaws.com/fest-vibes-ai-cache_manager:latest \
+  cache-manager-test \
   python -c "
 import json
 from load.app import lambda_handler
