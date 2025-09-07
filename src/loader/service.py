@@ -20,6 +20,7 @@ except ImportError:
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from shared.db.database import db
 from shared.db.models import Artist, ArtistRelation, Event, Genre, Venue
@@ -56,12 +57,19 @@ class DatabaseService:
         await db.initialize()
         await db.create_tables()
 
-    async def generate_embeddings_for_event(self, event: Event):
+    async def generate_embeddings_for_event(
+        self,
+        event: Event,
+        session: AsyncSession = None,
+        genres: List[Genre] = None,
+    ):
         """
-        Generate text embeddings for an event.
+        Generate text embeddings for an event, including genre information.
 
         Args:
             event: Event object to generate embeddings for
+            session: Database session for querying genres if needed
+            genres: List of Genre objects associated with the event
         """
         try:
             if event.description:
@@ -69,18 +77,85 @@ class DatabaseService:
                     event.description
                 )
 
-            combined_text = (
-                f"{event.artist_name} {event.venue_name} {event.description or ''}"
+            # Get genre information to include in embedding
+            genres_text = await self._get_genres_for_event_embedding(
+                event, session, genres
             )
-            event.event_text_embedding = self.embedding_model.encode(combined_text)
-            logger.debug(f"Generated embeddings for event: {event.artist_name}")
+
+            combined_text = (
+                f"{event.artist_name} {event.venue_name} {event.description or ''} {genres_text}"
+            ).strip()
+            event.embedding = self.embedding_model.encode(combined_text)
+            logger.debug(
+                f"Generated embeddings for event: {event.artist_name} with genres: {genres_text}"
+            )
         except Exception as e:
             logger.error(
                 f"Failed to generate embeddings for event {event.artist_name}: {str(e)}"
             )
             # Set empty embeddings as fallback to prevent database errors
             event.description_embedding = None
-            event.event_text_embedding = None
+            event.embedding = None
+
+    async def _get_genres_for_event_embedding(
+        self,
+        event: Event,
+        session: AsyncSession = None,
+        genres: List[Genre] = None,
+    ) -> str:
+        """
+        Get genre information for event embedding, with fallback logic.
+
+        Priority order:
+        1. Use provided genres list (from event processing)
+        2. Artist genres from database (if artist exists)
+        3. Venue genres from database (if venue exists)
+        4. Empty string if no genres found
+
+        Args:
+            event: Event object
+            session: Database session for querying
+            genres: List of Genre objects from event processing
+
+        Returns:
+            String of genre names joined with spaces
+        """
+        try:
+            # Priority 1: Use provided genres if available
+            if genres:
+                return " ".join([genre.name for genre in genres])
+
+            # If no session provided, can't query database
+            if not session:
+                return ""
+
+            # Priority 2: Get artist genres from database
+            if event.artist_id:
+                artist_result = await session.execute(
+                    select(Artist)
+                    .options(selectinload(Artist.genres))
+                    .filter_by(id=event.artist_id)
+                )
+                artist = artist_result.scalar_one_or_none()
+                if artist and artist.genres:
+                    return " ".join([genre.name for genre in artist.genres])
+
+            # Priority 3: Get venue genres from database as fallback
+            if event.venue_id:
+                venue_result = await session.execute(
+                    select(Venue)
+                    .options(selectinload(Venue.genres))
+                    .filter_by(id=event.venue_id)
+                )
+                venue = venue_result.scalar_one_or_none()
+                if venue and venue.genres:
+                    return " ".join([genre.name for genre in venue.genres])
+
+            return ""
+
+        except Exception as e:
+            logger.warning(f"Failed to get genres for event embedding: {str(e)}")
+            return ""
 
     async def generate_embeddings_for_artist(self, artist: Artist) -> None:
         """
@@ -113,19 +188,17 @@ class DatabaseService:
 
             # Generate embedding
             if combined_text:
-                artist.description_embedding = self.embedding_model.encode(
-                    combined_text
-                )
+                artist.embedding = self.embedding_model.encode(combined_text)
                 logger.debug(f"Generated embedding for artist: {artist.name}")
             else:
-                artist.description_embedding = None
+                artist.embedding = None
                 logger.warning(f"No text available for artist embedding: {artist.name}")
 
         except Exception as e:
             logger.error(
                 f"Failed to generate embedding for artist {artist.name}: {str(e)}"
             )
-            artist.description_embedding = None
+            artist.embedding = None
 
     async def generate_embeddings_for_venue(self, venue: Venue) -> None:
         """
@@ -184,17 +257,17 @@ class DatabaseService:
 
             # Generate embedding
             if combined_text:
-                venue.venue_info_embedding = self.embedding_model.encode(combined_text)
+                venue.embedding = self.embedding_model.encode(combined_text)
                 logger.debug(f"Generated embedding for venue: {venue.name}")
             else:
-                venue.venue_info_embedding = None
+                venue.embedding = None
                 logger.warning(f"No text available for venue embedding: {venue.name}")
 
         except Exception as e:
             logger.error(
                 f"Failed to generate embedding for venue {venue.name}: {str(e)}"
             )
-            venue.venue_info_embedding = None
+            venue.embedding = None
 
     async def generate_embeddings_for_genre(self, genre: Genre) -> None:
         """
@@ -244,10 +317,10 @@ class DatabaseService:
 
             # Generate embedding
             if combined_text:
-                genre.genre_embedding = self.embedding_model.encode(combined_text)
+                genre.embedding = self.embedding_model.encode(combined_text)
                 logger.debug(f"Generated embedding for genre: {genre.name}")
             else:
-                genre.genre_embedding = None
+                genre.embedding = None
                 logger.warning(f"No text available for genre embedding: {genre.name}")
 
         except Exception as e:
@@ -298,7 +371,7 @@ class DatabaseService:
                 result = await session.execute(select(Genre).filter_by(name=name))
                 genre = result.scalar_one()
                 # Generate embeddings if not present (conditional embedding generation)
-                if not genre.genre_embedding:
+                if not genre.embedding:
                     await self.generate_embeddings_for_genre(genre)
                 return genre
 
@@ -385,7 +458,7 @@ class DatabaseService:
                 if genre_objects:
                     await self._associate_artist_genres(session, artist, genre_objects)
                 # Generate embeddings if not present (conditional embedding generation)
-                if not artist.description_embedding:
+                if not artist.embedding:
                     await self.generate_embeddings_for_artist(artist)
                 return artist
 
@@ -417,7 +490,7 @@ class DatabaseService:
                 await self._associate_artist_genres(session, artist, genre_objects)
             else:
                 # Artist exists but may need embeddings
-                if not artist.description_embedding:
+                if not artist.embedding:
                     await self.generate_embeddings_for_artist(artist)
             return artist
 
@@ -558,7 +631,7 @@ class DatabaseService:
                     )
 
                 # Generate embeddings if not present (conditional embedding generation)
-                if not existing_venue.venue_info_embedding:
+                if not existing_venue.embedding:
                     await self.generate_embeddings_for_venue(existing_venue)
 
                 return existing_venue
@@ -695,7 +768,7 @@ class DatabaseService:
                 venue.genres = genre_objects
             else:
                 # Venue exists but may need embeddings
-                if not venue.venue_info_embedding:
+                if not venue.embedding:
                     await self.generate_embeddings_for_venue(venue)
             return venue
 
@@ -781,7 +854,7 @@ class DatabaseService:
             )
 
             # Generate embeddings for the new event
-            await self.generate_embeddings_for_event(new_event)
+            await self.generate_embeddings_for_event(new_event, session, genres)
 
             session.add(new_event)
             await session.flush()  # Get the ID for relationships
@@ -1004,7 +1077,11 @@ class DatabaseService:
 
                     # Upsert event using new method
                     event_obj = await self.upsert_event(
-                        session, event.event_data, artist, venue, genre_objects
+                        session,
+                        event.event_data,
+                        artist,
+                        venue,
+                        genre_objects,
                     )
                     if (
                         hasattr(event_obj, "_sa_instance_state")
