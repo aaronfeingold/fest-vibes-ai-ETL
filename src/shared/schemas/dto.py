@@ -29,7 +29,7 @@ class VenueData:
     name: str = ""
     thoroughfare: str = ""
     phone_number: str = ""
-    locality: str = "New Orleans"  # Today, local. Tomorrow, the world
+    locality: str = "New Orleans"  # Today, local. Tomorrow, the world...
     state: str = ""
     postal_code: str = ""
     full_address: str = ""
